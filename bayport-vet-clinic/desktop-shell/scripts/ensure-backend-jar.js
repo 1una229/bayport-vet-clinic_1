@@ -40,8 +40,25 @@ function newestMtime() {
   return newest;
 }
 
+function jarIsRunnable() {
+  try {
+    const buf = Buffer.alloc(65536);
+    const fd = fs.openSync(jarPath, 'r');
+    const bytes = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    const head = buf.slice(0, bytes).toString('latin1');
+    return head.includes('Main-Class:') && head.includes('JarLauncher');
+  } catch {
+    return false;
+  }
+}
+
 function needsRebuild() {
   if (!fs.existsSync(jarPath)) return true;
+  if (!jarIsRunnable()) {
+    console.warn('[desktop] Backend JAR is missing a runnable manifest — rebuilding…');
+    return true;
+  }
   const jarMtime = fs.statSync(jarPath).mtimeMs;
   return newestMtime() > jarMtime;
 }

@@ -8,7 +8,13 @@ window.tryLogin = async function(username, password, role, otp) {
   try {
     const payload = await Api.auth.login(username, password, otp);
     if (payload.status === "MFA_REQUIRED") {
-      return { ok: false, msg: "MFA_REQUIRED", username: payload.username };
+      return {
+        ok: false,
+        msg: "MFA_REQUIRED",
+        username: payload.username,
+        emailConfigured: payload.emailConfigured !== false,
+        mfaMessage: payload.message || "",
+      };
     }
     if (payload.status === "TOS_REQUIRED") {
       return { ok: false, msg: "TOS_REQUIRED", username: payload.username, currentVersion: payload.currentVersion };
@@ -43,9 +49,13 @@ window.tryLogin = async function(username, password, role, otp) {
     }
     return { ok: true };
   } catch (err) {
-    const msg = err.message?.includes("401")
-      ? "Invalid username or password."
-      : (err.message || "Unable to reach the server.");
+    const raw = err.message || "Unable to reach the server.";
+    let msg = raw;
+    if (raw.includes("Failed to fetch") || raw.includes("Cannot connect to backend")) {
+      msg = "Cannot connect to backend server. Please ensure the application is running and the backend server has started.";
+    } else if (raw.includes("401") && raw.length < 80) {
+      msg = "Invalid username or password.";
+    }
     return { ok: false, msg };
   }
 };
@@ -67,9 +77,9 @@ const CONFIG = {
   /** Clinical focus: no billing, POS, inventory, or reports in nav (billing still flows from consultations). */
   vet:          ["dashboard","pet-records","appointments","consultations","help"],
   // Front Office = reception + pharmacy — no Consultations module (vet/clinical only).
-  front_office: ["dashboard","pet-records","appointments","inventory","billing","pos","help"],
-  receptionist: ["dashboard","pet-records","appointments","inventory","billing","pos","help"],
-  pharmacist:   ["dashboard","pet-records","appointments","inventory","billing","pos","help"]
+  front_office: ["dashboard","pet-records","appointments","inventory","billing","pos","reminders","help"],
+  receptionist: ["dashboard","pet-records","appointments","inventory","billing","pos","reminders","help"],
+  pharmacist:   ["dashboard","pet-records","appointments","inventory","billing","pos","reminders","help"]
 };
 
 const LABEL = {
@@ -109,6 +119,7 @@ const SIDEBAR_ICONS = {
   pos: `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>`,
   inventory: `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>`,
   reports: `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>`,
+  reminders: `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>`,
   settings: `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
   "manage-users": `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>`,
   "activity-logs": `<svg class="h-5 w-5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
@@ -126,6 +137,7 @@ const NAV_TOOLTIPS = {
   pos: "Checkout and receipts",
   inventory: "Stock and catalog",
   reports: "Revenue and operational summaries",
+  reminders: "Vaccination and pet owner email reminders",
   settings: "Clinic and system preferences",
   "manage-users": "Staff accounts and roles",
   "activity-logs": "Who changed what",
@@ -138,13 +150,13 @@ const NAV_TOOLTIPS = {
  */
 const _SIDEBAR_FRONT_OFFICE = [
   { label: "Core workflow", open: true, keys: ["dashboard", "pet-records", "appointments"] },
-  { label: "Operations", open: true, keys: ["billing", "pos", "inventory"] },
+  { label: "Operations", open: true, keys: ["billing", "pos", "inventory", "reminders"] },
   { label: "Help & support", open: false, keys: ["help"] }
 ];
 const SIDEBAR_GROUPS = {
   admin: [
     { label: "Core workflow", open: true, keys: ["dashboard", "pet-records", "appointments", "consultations"] },
-    { label: "Operations", open: true, keys: ["billing", "pos", "inventory", "reports"] },
+    { label: "Operations", open: true, keys: ["billing", "pos", "inventory", "reports", "reminders"] },
     { label: "Admin settings", open: false, keys: ["settings", "manage-users"] },
     { label: "Records & audit", open: false, keys: ["activity-logs", "recycle-bin"] },
     { label: "Help & support", open: false, keys: ["help"] }

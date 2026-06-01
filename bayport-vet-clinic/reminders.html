@@ -32,10 +32,13 @@
             </div>
             <div class="flex flex-wrap gap-2 items-center">
               <a href="reminders-calendar.html" class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium">Calendar view</a>
+              <button id="dispatchDueBtn" class="px-4 py-2 rounded-md border border-[var(--soft-teal)] text-[var(--soft-teal)] hover:bg-[var(--soft-teal)] hover:text-white text-sm font-medium hidden">Send due reminders now</button>
               <button id="addPetReminderBtn" class="px-4 py-2 rounded-md border border-[var(--soft-teal)] text-[var(--soft-teal)] hover:bg-[var(--soft-teal)] hover:text-white">+ Pet Reminder</button>
               <button id="addGeneralReminderBtn" class="px-4 py-2 rounded-md bg-[var(--soft-teal)] text-white hover:brightness-95">+ General Reminder</button>
             </div>
           </div>
+
+          <div id="emailStatusBanner" class="hidden mb-6 rounded-xl border px-4 py-3 text-sm"></div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <section class="border rounded-2xl p-4 bg-[#f9fcfc]">
@@ -90,6 +93,52 @@
 
   document.getElementById('addPetReminderBtn').addEventListener('click', ()=>openReminderModal('PET'));
   document.getElementById('addGeneralReminderBtn').addEventListener('click', ()=>openReminderModal('GENERAL'));
+
+  const emailStatusBanner = document.getElementById('emailStatusBanner');
+  const dispatchDueBtn = document.getElementById('dispatchDueBtn');
+
+  async function loadEmailStatus() {
+    try {
+      const health = await Api.health.check();
+      const configured = health.mailConfigured === true;
+      emailStatusBanner.classList.remove('hidden');
+      if (configured) {
+        emailStatusBanner.className = 'mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800';
+        emailStatusBanner.innerHTML = '<strong>Email delivery active.</strong> Due vaccination reminders are sent automatically on startup, hourly, and daily at 9 AM.';
+      } else {
+        emailStatusBanner.className = 'mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900';
+        emailStatusBanner.innerHTML = '<strong>Email not configured.</strong> Automatic reminders will not be delivered until SMTP is set up. '
+          + 'For the desktop app, copy <code class="text-xs bg-white/70 px-1 rounded">data/mail.env.example</code> to '
+          + '<code class="text-xs bg-white/70 px-1 rounded">data/mail.env</code> with your Gmail app password, then restart. '
+          + 'See Settings → Email for details.';
+      }
+      if (getRole() === 'admin') {
+        dispatchDueBtn.classList.remove('hidden');
+        dispatchDueBtn.disabled = !configured;
+        dispatchDueBtn.title = configured ? 'Send all due pet reminders now' : 'Configure SMTP first';
+      }
+    } catch (err) {
+      console.warn('Could not load email status:', err);
+    }
+  }
+
+  dispatchDueBtn.addEventListener('click', async () => {
+    dispatchDueBtn.disabled = true;
+    dispatchDueBtn.textContent = 'Sending…';
+    try {
+      const result = await Api.reminders.dispatchDue();
+      const msg = result.message || `Sent ${result.sentCount || 0}, failed ${result.failedCount || 0}, skipped ${result.skippedCount || 0}.`;
+      alert(msg);
+      await refreshReminders();
+    } catch (err) {
+      alert(err.message || 'Failed to send due reminders.');
+    } finally {
+      dispatchDueBtn.disabled = false;
+      dispatchDueBtn.textContent = 'Send due reminders now';
+    }
+  });
+
+  loadEmailStatus();
 
   let remindersData = [];
   let templateCache = {};

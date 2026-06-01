@@ -92,5 +92,38 @@ public class NotificationService {
         String r = user.getRole().toLowerCase();
         return "front_office".equals(r) || "receptionist".equals(r) || "pharmacist".equals(r);
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void notifyAdminsLoginOtp(String username, String code) {
+        notifyAdmins("MFA_LOGIN",
+                "Login OTP for " + username + ": " + code
+                        + " (email not configured — share this code with the user, expires in 5 min)");
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void notifyAdminsSignupOtp(String email, String code) {
+        notifyAdmins("MFA_SIGNUP",
+                "Signup OTP for " + email + ": " + code
+                        + " (email not configured — expires in 5 min)");
+    }
+
+    private void notifyAdmins(String type, String message) {
+        try {
+            final String safeMsg = truncateMessage(message);
+            userRepository.findAll().stream()
+                    .filter(u -> "admin".equalsIgnoreCase(u.getRole())
+                            || (u.getRoles() != null && u.getRoles().stream()
+                            .anyMatch(r -> "ROLE_ADMIN".equalsIgnoreCase(r.getName()))))
+                    .forEach(u -> {
+                        Notification notif = new Notification();
+                        notif.setUserId(u.getId());
+                        notif.setType(type);
+                        notif.setMessage(safeMsg);
+                        notificationRepository.save(notif);
+                    });
+        } catch (Exception e) {
+            System.err.println("Error notifying admins: " + e.getMessage());
+        }
+    }
 }
 

@@ -43,6 +43,10 @@ public class ReminderEmailController {
             @PathVariable Long id,
             @RequestBody Map<String, String> request
     ) {
+        if (!emailService.isConfigured()) {
+            throw new IllegalStateException(
+                    "Email (SMTP) is not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD and restart.");
+        }
         Reminder r = reminders.findById(id).orElseThrow();
         Owner owner = r.getOwnerId() != null ? owners.findById(r.getOwnerId()).orElse(null) : null;
         Pet pet = r.getPetId() != null ? pets.findById(r.getPetId()).orElse(null) : null;

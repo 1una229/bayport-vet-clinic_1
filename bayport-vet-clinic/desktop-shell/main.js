@@ -253,6 +253,27 @@ async function restartBackend(reason) {
   return backendStartPromise;
 }
 
+function loadMailEnv() {
+  const envPath = path.join(DATA_DIR, 'mail.env');
+  const extra = {};
+  if (!fs.existsSync(envPath)) return extra;
+  try {
+    for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const idx = trimmed.indexOf('=');
+      if (idx <= 0) continue;
+      extra[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
+    }
+    if (Object.keys(extra).length) {
+      log.info('Loaded mail.env for SMTP:', Object.keys(extra).join(', '));
+    }
+  } catch (err) {
+    log.warn('Could not read mail.env:', err.message);
+  }
+  return extra;
+}
+
 function launchBackendProcess() {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(JAR_PATH)) {
@@ -281,6 +302,7 @@ function launchBackendProcess() {
       cwd: FRONTEND_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
+      env: { ...process.env, ...loadMailEnv() },
     });
 
     let backendOutput = '';

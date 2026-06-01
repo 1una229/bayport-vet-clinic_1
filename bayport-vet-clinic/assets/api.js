@@ -281,6 +281,35 @@ window.Api = {
     }),
   },
 
+  medicalRecords: {
+    list: (petId) => ApiHttp(`/pets/${petId}/medical-records`, { token: Api.token() }),
+    get: (petId, recordId) => ApiHttp(`/pets/${petId}/medical-records/${recordId}`, { token: Api.token() }),
+    create: (petId, record) => ApiHttp(`/pets/${petId}/medical-records`, {
+      method: "POST",
+      body: record,
+      token: Api.token(),
+    }),
+    update: (petId, recordId, record) => ApiHttp(`/pets/${petId}/medical-records/${recordId}`, {
+      method: "PUT",
+      body: record,
+      token: Api.token(),
+    }),
+    remove: (petId, recordId) => ApiHttp(`/pets/${petId}/medical-records/${recordId}`, {
+      method: "DELETE",
+      token: Api.token(),
+    }),
+    uploadAttachment: (petId, recordId, file) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return ApiHttp(`/pets/${petId}/medical-records/${recordId}/attachment`, {
+        method: "POST",
+        body: fd,
+        token: Api.token(),
+      });
+    },
+    vaccinationSchedule: (petId) => ApiHttp(`/pets/${petId}/vaccination-schedule`, { token: Api.token() }),
+  },
+
   procedures: {
     create: (petId, procedure) => ApiHttp(`/pets/${petId}/procedures`, {
       method: "POST",
@@ -322,6 +351,12 @@ window.Api = {
       return ApiHttp(`/reminder-email/${id}`, {
         method: "POST",
         body: payload,
+        token: Api.token(),
+      });
+    },
+    dispatchDue() {
+      return ApiHttp("/reminders/dispatch-due", {
+        method: "POST",
         token: Api.token(),
       });
     },

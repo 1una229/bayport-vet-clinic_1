@@ -73,6 +73,15 @@ public class Pet {
     @Column(name = "last_vaccination_vet")
     private String lastVaccinationVet;
 
+    @Column(length = 500)
+    private String allergies;
+
+    @Column(name = "chronic_conditions", length = 500)
+    private String chronicConditions;
+
+    @Column(name = "known_medications", columnDefinition = "TEXT")
+    private String knownMedications;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", insertable = false, updatable = false)
     private Owner ownerEntity;
@@ -184,5 +193,14 @@ public class Pet {
 
     public String getLastVaccinationVet() { return lastVaccinationVet; }
     public void setLastVaccinationVet(String lastVaccinationVet) { this.lastVaccinationVet = lastVaccinationVet; }
+
+    public String getAllergies() { return allergies; }
+    public void setAllergies(String allergies) { this.allergies = allergies; }
+
+    public String getChronicConditions() { return chronicConditions; }
+    public void setChronicConditions(String chronicConditions) { this.chronicConditions = chronicConditions; }
+
+    public String getKnownMedications() { return knownMedications; }
+    public void setKnownMedications(String knownMedications) { this.knownMedications = knownMedications; }
 }
 

@@ -36,6 +36,7 @@
   <script src="assets/app.js"></script>
   <script src="assets/app-header.js"></script>
   <script src="assets/pet-context.js"></script>
+  <script src="assets/medical-history.js"></script>
   <script>
     guard('pet-records');
     if (typeof initBayportAppHeader === "function") initBayportAppHeader(document.getElementById("bpAppHeader"), { accent: "soft-teal" });
@@ -64,6 +65,15 @@
     }
     function petDobInputValue(p) {
       const v = p && p.dateOfBirth;
+      if (!v) return '';
+      if (typeof v === 'string') return v.slice(0, 10);
+      if (Array.isArray(v) && v.length >= 3) {
+        return `${v[0]}-${String(v[1]).padStart(2, '0')}-${String(v[2]).padStart(2, '0')}`;
+      }
+      return '';
+    }
+    function petLastVaccInputValue(p) {
+      const v = p && p.lastVaccinationDate;
       if (!v) return '';
       if (typeof v === 'string') return v.slice(0, 10);
       if (Array.isArray(v) && v.length >= 3) {
@@ -108,7 +118,7 @@
         .join('');
       modalRoot.innerHTML = `
         <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target===this) closeModal()">
-          <div class="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+          <div class="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
             <h3 class="text-xl font-semibold text-gray-800 mb-4">Edit pet profile</h3>
             <div class="grid grid-cols-1 gap-4">
               <label class="text-sm text-gray-600">Pet name<input id="ep_name" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(p.name)}"></label>
@@ -123,8 +133,19 @@
               <label class="text-sm text-gray-600">Date of birth<input id="ep_dob" type="date" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(petDobInputValue(p))}"></label>
               <label class="text-sm text-gray-600">Federation<select id="ep_federation" class="w-full border border-gray-300 rounded-lg p-3 mt-1">${fedOpts}</select></label>
               <label class="text-sm text-gray-600">Home address<textarea id="ep_address" rows="3" class="w-full border border-gray-300 rounded-lg p-3 mt-1">${escapeHtmlAttr(p.address)}</textarea></label>
+              <div class="border border-sky-100 rounded-lg p-4 bg-sky-50/40 space-y-3">
+                <p class="text-sm font-semibold text-[var(--soft-teal)]">Health profile &amp; last vaccination</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <label class="text-sm text-gray-600">Last vaccination date<input id="ep_lastVaccDate" type="date" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(petLastVaccInputValue(p))}"></label>
+                  <label class="text-sm text-gray-600">Place vaccinated<input id="ep_lastVaccPlace" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(p.lastVaccinationPlace || '')}"></label>
+                  <label class="text-sm text-gray-600">Veterinarian<input id="ep_lastVaccVet" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(p.lastVaccinationVet || '')}"></label>
+                </div>
+                <label class="text-sm text-gray-600">Known allergies<input id="ep_allergies" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(p.allergies || '')}" placeholder="e.g. chicken, penicillin"></label>
+                <label class="text-sm text-gray-600">Chronic conditions<input id="ep_chronic" class="w-full border border-gray-300 rounded-lg p-3 mt-1" value="${escapeHtmlAttr(p.chronicConditions || '')}"></label>
+                <label class="text-sm text-gray-600">Long-term medications<textarea id="ep_meds" rows="2" class="w-full border border-gray-300 rounded-lg p-3 mt-1">${escapeHtmlAttr(p.knownMedications || '')}</textarea></label>
+              </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3">Owner is managed from pet records. Changes here update this pet only.</p>
+            <p class="text-xs text-gray-500 mt-3">Use <strong>+ External record</strong> on the profile page to add full medical history sections. Changes here update this pet only.</p>
             <div class="mt-6 flex justify-end gap-2">
               <button type="button" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50" onclick="closeModal()">Cancel</button>
               <button type="button" id="ep_save_btn" class="px-5 py-2 rounded-lg bg-[var(--soft-teal)] text-white font-medium hover:brightness-105">Save changes</button>
@@ -151,6 +172,12 @@
           microchip: p.microchip,
           federation: document.getElementById('ep_federation').value,
           address: document.getElementById('ep_address').value.trim(),
+          lastVaccinationDate: (document.getElementById('ep_lastVaccDate')?.value || '').trim() || null,
+          lastVaccinationPlace: (document.getElementById('ep_lastVaccPlace')?.value || '').trim(),
+          lastVaccinationVet: (document.getElementById('ep_lastVaccVet')?.value || '').trim(),
+          allergies: (document.getElementById('ep_allergies').value || '').trim(),
+          chronicConditions: (document.getElementById('ep_chronic').value || '').trim(),
+          knownMedications: (document.getElementById('ep_meds').value || '').trim(),
           owner: p.owner,
           ownerId: p.ownerId,
           photo: p.photo,
@@ -197,6 +224,11 @@
             All pet profiles
           </a>
           <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="exportMedicalHistoryPdf()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[var(--soft-teal)] text-sm font-medium text-[var(--soft-teal)] bg-white hover:bg-sky-50 shadow-sm">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              Print / Export PDF
+            </button>
+            <button type="button" onclick="openExternalRecordModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-800 bg-white hover:bg-gray-50 shadow-sm">+ External record</button>
             <button type="button" onclick="openEditPetProfile()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-800 bg-white hover:bg-gray-50 shadow-sm">Edit profile</button>
             ${consultBtn}
           </div>
@@ -264,7 +296,10 @@
 
       const medBlock = `
         <div class="pp-card" id="medSection">
-          <div class="pp-card-h">${iconHeart}<span class="font-semibold text-gray-800">Medical history</span></div>
+          <div class="pp-card-h flex-wrap gap-2">
+            ${iconHeart}<span class="font-semibold text-gray-800 flex-1">In-clinic visit history</span>
+            <button type="button" class="text-xs font-semibold rounded-md border border-[var(--soft-teal)] text-[var(--soft-teal)] px-2.5 py-1 hover:bg-[var(--soft-teal)] hover:text-white bg-white" onclick="openProc()">+ Add visit</button>
+          </div>
           <div class="pp-card-b">
             <div class="overflow-x-auto -mx-1">
               <table class="w-full border-collapse text-sm min-w-[480px]">
@@ -280,6 +315,38 @@
             <div class="mt-3">
               <button type="button" id="medHistoryViewAll" class="hidden text-sm font-semibold text-[var(--soft-teal)] hover:underline">View all history</button>
             </div>
+          </div>
+        </div>`;
+
+      const healthBlock = `
+        <div class="pp-card" id="healthSummarySection">
+          <div class="pp-card-h">${iconHeart}<span class="font-semibold text-gray-800">Health profile</span></div>
+          <div class="pp-card-b space-y-0">
+            ${ppRow('Allergies', p?.allergies || 'None recorded')}
+            ${ppRow('Chronic conditions', p?.chronicConditions || 'None recorded')}
+            ${ppRow('Long-term medications', p?.knownMedications || 'None recorded')}
+          </div>
+        </div>`;
+
+      const vaccScheduleBlock = `
+        <div class="pp-card" id="vaccScheduleSection">
+          <div class="pp-card-h">${iconSyringe}<span class="font-semibold text-gray-800">Vaccination schedule &amp; due dates</span></div>
+          <div class="pp-card-b overflow-x-auto" id="vaccScheduleList"><div class="text-sm text-gray-500">Loading schedule…</div></div>
+        </div>`;
+
+      const structuredHistoryBlock = `
+        <div class="pp-card" id="structuredHistorySection">
+          <div class="pp-card-h flex-wrap gap-2">
+            ${iconHeart}<span class="font-semibold text-gray-800 flex-1">Medical history records</span>
+            <button type="button" class="text-xs font-semibold rounded-md border border-[var(--soft-teal)] text-[var(--soft-teal)] px-2.5 py-1 hover:bg-[var(--soft-teal)] hover:text-white bg-white" onclick="openExternalRecordModal()">+ Add record</button>
+          </div>
+          <div class="pp-card-b space-y-6">
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">Vaccination history (including external)</h4><div id="histVaccination"></div></div>
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">Clinical notes</h4><div id="histClinical"></div></div>
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">Diagnostic &amp; test results</h4><div id="histDiagnostic"></div></div>
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">Medications &amp; preventatives</h4><div id="histMedication"></div></div>
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">Surgical history</h4><div id="histSurgery"></div></div>
+            <div><h4 class="text-sm font-semibold text-gray-700 mb-2">External clinic documents</h4><div id="histExternal"></div></div>
           </div>
         </div>`;
 
@@ -299,8 +366,8 @@
 
       document.getElementById('profileCard').insertAdjacentHTML('beforeend', `
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          <div class="xl:col-span-5 space-y-6">${vaccBlock}${detailBlock}</div>
-          <div class="xl:col-span-7 space-y-6">${ownerShell}${medBlock}${remBlock}</div>
+          <div class="xl:col-span-5 space-y-6">${vaccBlock}${vaccScheduleBlock}${healthBlock}${detailBlock}</div>
+          <div class="xl:col-span-7 space-y-6">${ownerShell}${structuredHistoryBlock}${medBlock}${remBlock}</div>
         </div>`);
 
       // Owner card render
@@ -329,7 +396,41 @@
 
       await renderProcedures();
       await renderPetReminders();
+      await refreshMedicalHistory();
     }
+
+    window.refreshMedicalHistory = async function refreshMedicalHistory() {
+      if (typeof MedicalHistory === 'undefined') return;
+      try {
+        const [records, schedule] = await Promise.all([
+          MedicalHistory.loadRecords(id),
+          MedicalHistory.loadSchedule(id),
+        ]);
+        MedicalHistory.renderVaccinationSchedule(document.getElementById('vaccScheduleList'), schedule);
+        MedicalHistory.renderRecordsByType(document.getElementById('histVaccination'), records, 'VACCINATION');
+        MedicalHistory.renderRecordsByType(document.getElementById('histClinical'), records, 'CLINICAL_NOTE');
+        MedicalHistory.renderRecordsByType(document.getElementById('histDiagnostic'), records, 'DIAGNOSTIC');
+        MedicalHistory.renderRecordsByType(document.getElementById('histMedication'), records, 'MEDICATION');
+        MedicalHistory.renderRecordsByType(document.getElementById('histSurgery'), records, 'SURGERY');
+        MedicalHistory.renderRecordsByType(document.getElementById('histExternal'), records, 'EXTERNAL_DOCUMENT');
+      } catch (err) {
+        console.error('Medical history load failed', err);
+      }
+    };
+
+    window.openExternalRecordModal = function openExternalRecordModal() {
+      MedicalHistory.openAddModal(id, 'EXTERNAL_DOCUMENT', refreshMedicalHistory);
+    };
+
+    window.exportMedicalHistoryPdf = async function exportMedicalHistoryPdf() {
+      try {
+        const p = currentPet || await repoGetPet(id);
+        await MedicalHistory.printPdf(id, p?.name);
+        if (typeof showToast === 'function') showToast('Medical history PDF downloaded');
+      } catch (e) {
+        alert(e.message || 'Could not export PDF');
+      }
+    };
 
     function procCellEsc(s) {
       if (s == null || String(s).trim() === '') return '—';

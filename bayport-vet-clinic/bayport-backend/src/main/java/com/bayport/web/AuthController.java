@@ -8,6 +8,7 @@ import com.bayport.entity.User;
 import com.bayport.repository.UserRepository;
 import com.bayport.service.AuditLogService;
 import com.bayport.service.BayportService;
+import com.bayport.service.EmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,7 @@ public class AuthController {
     private final AuditLogService auditLogService;
     private final BayportService bayportService;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     public AuthController(
             AuthenticationManager authenticationManager,
@@ -39,7 +41,8 @@ public class AuthController {
             JwtService jwtService,
             AuditLogService auditLogService,
             BayportService bayportService,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            EmailService emailService) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.mfaService = mfaService;
@@ -47,6 +50,7 @@ public class AuthController {
         this.auditLogService = auditLogService;
         this.bayportService = bayportService;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     @PostMapping("/auth/login")
@@ -127,15 +131,28 @@ public class AuthController {
                         .body(Map.of("error", "User email is required for authentication. Please contact administrator."));
             }
             
-            // Send OTP to user's email
-            mfaService.sendMfaCode(user);
-            auditLogService.log("LOGIN_MFA_REQUIRED", "User", String.valueOf(user.getId()), 
-                "OTP code sent to user email", httpRequest);
-            return ResponseEntity.ok(Map.of(
-                "status", "MFA_REQUIRED",
-                "message", "OTP code sent to your email. Please verify to complete login.",
-                "username", user.getUsername()
-            ));
+            // Send OTP to user's email (or admin notification if SMTP not configured)
+            try {
+                mfaService.sendMfaCode(user);
+            } catch (Exception emailEx) {
+                auditLogService.log("LOGIN_FAILED", "User", String.valueOf(user.getId()),
+                        "MFA send failed: " + emailEx.getMessage(), httpRequest);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.of(
+                                "error", "Could not send OTP. Configure email (SPRING_MAIL_USERNAME / SPRING_MAIL_PASSWORD) or ask an administrator.",
+                                "details", emailEx.getMessage() != null ? emailEx.getMessage() : "Email send failed"
+                        ));
+            }
+            auditLogService.log("LOGIN_MFA_REQUIRED", "User", String.valueOf(user.getId()),
+                    "OTP code sent to user email", httpRequest);
+            Map<String, Object> mfaResponse = new java.util.HashMap<>();
+            mfaResponse.put("status", "MFA_REQUIRED");
+            mfaResponse.put("username", user.getUsername());
+            mfaResponse.put("emailConfigured", emailService.isConfigured());
+            mfaResponse.put("message", emailService.isConfigured()
+                    ? "OTP code sent to your email. Please verify to complete login."
+                    : "OTP was sent to administrator notifications (email not configured). Ask admin for the code.");
+            return ResponseEntity.ok(mfaResponse);
         } catch (Exception e) {
             auditLogService.log("LOGIN_FAILED", "User", request.getUsername(), 
                 "Login failed: " + e.getMessage(), httpRequest);

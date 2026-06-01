@@ -6,6 +6,7 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -23,18 +24,26 @@ import java.util.Base64;
 public class EmailService {
 
     private final JavaMailSender mailSender;
+    private final String mailUsername;
     private String logoBase64 = null;
 
     @Autowired(required = false)
-    public EmailService(JavaMailSender mailSender) {
+    public EmailService(
+            JavaMailSender mailSender,
+            @Value("${spring.mail.username:}") String mailUsername) {
         this.mailSender = mailSender;
-        if (mailSender == null) {
-            log.warn("JavaMailSender not configured. Email notifications will be disabled. " +
-                    "To enable, configure SMTP settings in application.properties");
+        this.mailUsername = mailUsername == null ? "" : mailUsername.trim();
+        if (mailSender == null || this.mailUsername.isEmpty()) {
+            log.warn("Email (SMTP) is not fully configured. Set spring.mail.username and spring.mail.password "
+                    + "to enable MFA codes and automatic vaccine reminders.");
         } else {
-            // Load logo once at startup
             loadLogo();
         }
+    }
+
+    /** True when SMTP username is set and JavaMailSender is available. */
+    public boolean isConfigured() {
+        return mailSender != null && !mailUsername.isEmpty();
     }
 
     /**
@@ -90,77 +99,99 @@ public class EmailService {
         }
     }
 
+    private static final String BRAND_PRIMARY = "#0057b8";
+    private static final String BRAND_ACCENT = "#158a8a";
+
+    /**
+     * Branded email header with Bayport logo and accent bar.
+     */
+    private String buildEmailHeader(String subject) {
+        String safeSubject = subject == null ? "Bayport Veterinary Clinic" : subject
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        StringBuilder header = new StringBuilder();
+        header.append("<div style=\"background: linear-gradient(135deg, ").append(BRAND_PRIMARY).append(" 0%, ")
+              .append(BRAND_ACCENT).append(" 100%); padding: 28px 24px; text-align: center; border-radius: 12px 12px 0 0;\">");
+        if (logoBase64 != null && !logoBase64.isEmpty()) {
+            header.append("<img src=\"data:image/png;base64,").append(logoBase64)
+                  .append("\" alt=\"Bayport Veterinary Clinic\" style=\"max-width: 120px; height: auto; margin-bottom: 12px; background: #ffffff; border-radius: 10px; padding: 8px;\">");
+        } else {
+            header.append("<div style=\"display:inline-block;background:#ffffff;color:").append(BRAND_PRIMARY)
+                  .append(";font-size:22px;font-weight:bold;padding:12px 20px;border-radius:10px;margin-bottom:12px;\">BAYPORT</div>");
+        }
+        header.append("<p style=\"margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.95); text-transform: uppercase;\">")
+              .append("Veterinary Clinic")
+              .append("</p>");
+        header.append("</div>");
+        header.append("<div style=\"background-color: #f0f7ff; border-left: 4px solid ").append(BRAND_PRIMARY)
+              .append("; padding: 14px 20px; margin: 0;\">");
+        header.append("<p style=\"margin: 0; font-size: 16px; font-weight: 600; color: ").append(BRAND_PRIMARY)
+              .append(";\">").append(safeSubject).append("</p>");
+        header.append("</div>");
+        return header.toString();
+    }
+
     /**
      * Builds the HTML email footer with clinic name, address, and contact.
      */
     private String buildEmailFooter() {
         StringBuilder footer = new StringBuilder();
-        footer.append("<div style=\"margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; font-family: Arial, sans-serif; background-color: #f9f9f9; padding: 20px;\">");
-        
-        // Clinic name (bold)
-        footer.append("<p style=\"margin: 10px 0 5px 0; font-size: 18px; font-weight: bold; color: #2c3e50; letter-spacing: 0.5px;\">")
-              .append("BAYPORT VETERINARY CLINIC")
+        footer.append("<div style=\"margin-top: 0; padding: 24px 20px; border-top: 3px solid ").append(BRAND_PRIMARY)
+              .append("; text-align: center; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f6f9f9;\">");
+        footer.append("<p style=\"margin: 0 0 8px 0; font-size: 17px; font-weight: bold; color: ").append(BRAND_PRIMARY)
+              .append("; letter-spacing: 0.5px;\">")
+              .append("Bayport Veterinary Clinic")
               .append("</p>");
-        
-        // Address
-        footer.append("<p style=\"margin: 5px 0; font-size: 13px; color: #555; line-height: 1.5;\">")
+        footer.append("<p style=\"margin: 4px 0; font-size: 13px; color: #555; line-height: 1.6;\">")
               .append("322 Quirino Avenue, Brgy. Don Galo, Parañaque City")
               .append("</p>");
-        
-        // Contact number
-        footer.append("<p style=\"margin: 5px 0 0 0; font-size: 13px; color: #555; line-height: 1.5;\">")
+        footer.append("<p style=\"margin: 4px 0 0 0; font-size: 13px; color: ").append(BRAND_ACCENT).append("; font-weight: 600;\">")
               .append("0968 633 2940")
               .append("</p>");
-        
+        footer.append("<p style=\"margin: 16px 0 0 0; font-size: 11px; color: #999;\">")
+              .append("This is an automated message from Bayport VCMS. Please do not reply directly to this email.")
+              .append("</p>");
         footer.append("</div>");
         return footer.toString();
     }
 
     /**
-     * Converts plain text message to HTML format with footer.
+     * Converts plain text message to branded HTML email.
      */
-    private String formatMessageAsHtml(String plainTextMessage) {
+    private String formatMessageAsHtml(String plainTextMessage, String subject) {
         if (plainTextMessage == null) {
             plainTextMessage = "";
         }
-        
-        // Convert newlines to HTML line breaks
+
         String htmlBody = plainTextMessage
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
-            .replace("\n\n", "</p><p style=\"margin: 10px 0;\">")
+            .replace("\n\n", "</p><p style=\"margin: 12px 0; color: #333;\">")
             .replace("\n", "<br/>");
-        
-        // Wrap in paragraph tags
+
         if (!htmlBody.startsWith("<p")) {
-            htmlBody = "<p style=\"margin: 10px 0;\">" + htmlBody + "</p>";
+            htmlBody = "<p style=\"margin: 12px 0; color: #333; font-size: 15px; line-height: 1.7;\">" + htmlBody + "</p>";
         }
-        
-        // Build complete HTML email
+
         StringBuilder html = new StringBuilder();
-        html.append("<!DOCTYPE html>");
-        html.append("<html>");
-        html.append("<head>");
-        html.append("<meta charset=\"UTF-8\">");
-        html.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        html.append("</head>");
-        html.append("<body style=\"font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;\">");
-        html.append("<div style=\"background-color: #ffffff;\">");
-        html.append(htmlBody);
-        html.append(buildEmailFooter());
-        html.append("</div>");
-        html.append("</body>");
-        html.append("</html>");
-        
+        html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head>");
+        html.append("<body style=\"margin: 0; padding: 0; background-color: #eef4fb; font-family: 'Segoe UI', Arial, sans-serif;\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background-color: #eef4fb; padding: 24px 12px;\"><tr><td align=\"center\">");
+        html.append("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width: 600px; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,87,184,0.12);\">");
+        html.append("<tr><td>").append(buildEmailHeader(subject)).append("</td></tr>");
+        html.append("<tr><td style=\"padding: 24px 28px;\">").append(htmlBody).append("</td></tr>");
+        html.append("<tr><td>").append(buildEmailFooter()).append("</td></tr>");
+        html.append("</table></td></tr></table></body></html>");
         return html.toString();
     }
 
     /** Generic email sender - now sends HTML emails */
     public void sendEmail(String to, String subject, String message) {
-        if (mailSender == null) {
-            log.warn("Email not sent to {}: JavaMailSender not configured. Subject: {}", to, subject);
-            throw new RuntimeException("Email service is not configured. Please configure SMTP settings in application.properties");
+        if (!isConfigured()) {
+            log.warn("Email not sent to {}: SMTP not configured. Subject: {}", to, subject);
+            throw new RuntimeException(
+                    "Email is not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD "
+                            + "(use a Gmail app password) and restart the application.");
         }
         
         if (to == null || to.trim().isEmpty()) {
@@ -173,10 +204,11 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
             
             helper.setTo(to);
+            helper.setFrom(mailUsername, "Bayport Veterinary Clinic");
             helper.setSubject(subject);
             
             // Convert message to HTML and add footer
-            String htmlContent = formatMessageAsHtml(message);
+            String htmlContent = formatMessageAsHtml(message, subject);
             helper.setText(htmlContent, true); // true = HTML content
             
             mailSender.send(mimeMessage);

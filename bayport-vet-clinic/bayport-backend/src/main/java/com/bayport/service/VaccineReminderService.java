@@ -1,9 +1,12 @@
 package com.bayport.service;
 
+import com.bayport.entity.MedicalRecordType;
 import com.bayport.entity.Pet;
+import com.bayport.entity.PetMedicalRecord;
 import com.bayport.entity.Procedure;
 import com.bayport.entity.Reminder;
 import com.bayport.entity.ReminderType;
+import com.bayport.repository.PetMedicalRecordRepository;
 import com.bayport.repository.ProcedureRepository;
 import com.bayport.repository.ReminderRepository;
 import org.springframework.stereotype.Service;
@@ -21,10 +24,15 @@ public class VaccineReminderService {
 
     private final ReminderRepository reminderRepository;
     private final ProcedureRepository procedureRepository;
+    private final PetMedicalRecordRepository medicalRecordRepository;
 
-    public VaccineReminderService(ReminderRepository reminderRepository, ProcedureRepository procedureRepository) {
+    public VaccineReminderService(
+            ReminderRepository reminderRepository,
+            ProcedureRepository procedureRepository,
+            PetMedicalRecordRepository medicalRecordRepository) {
         this.reminderRepository = reminderRepository;
         this.procedureRepository = procedureRepository;
+        this.medicalRecordRepository = medicalRecordRepository;
     }
 
     public void syncPetVaccineReminders(Pet pet) {
@@ -40,18 +48,28 @@ public class VaccineReminderService {
                 .sorted(Comparator.comparing(Procedure::getPerformedAt))
                 .toList();
 
-        if (procedures.isEmpty()) {
-            return;
-        }
-
         Map<String, Reminder> deduped = new LinkedHashMap<>();
         for (Procedure procedure : procedures) {
             NextReminder next = computeNextReminder(pet, procedure);
-            if (next == null || next.date == null || !next.date.isAfter(LocalDate.now())) {
+            // Include due/overdue dates so the scheduler can send them automatically.
+            if (next == null || next.date == null) {
                 continue;
             }
             Reminder reminder = buildReminder(pet, next);
             deduped.put(next.date + "|" + next.title, reminder);
+        }
+
+        for (PetMedicalRecord record : medicalRecordRepository.findByPetIdAndRecordTypeOrderByRecordDateDesc(
+                pet.getId(), MedicalRecordType.VACCINATION)) {
+            if (record.getNextDueDate() == null) {
+                continue;
+            }
+            String vaccine = record.getVaccineType() != null ? record.getVaccineType() : record.getTitle();
+            NextReminder next = new NextReminder(
+                    vaccine + " Reminder",
+                    vaccine,
+                    record.getNextDueDate());
+            deduped.put(next.date + "|" + next.title + "|ext", buildReminder(pet, next));
         }
 
         if (!deduped.isEmpty()) {

@@ -275,7 +275,40 @@
 
     function localTimeHM() {
       const d = new Date();
-      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return snapToTimeSlot(d.getHours(), d.getMinutes());
+    }
+
+    /** Fixed 30-minute appointment slots (7:00 AM – 7:00 PM). */
+    function buildAppointmentTimeSlots() {
+      const slots = [];
+      for (let h = 7; h <= 19; h++) {
+        for (const m of [0, 30]) {
+          if (h === 19 && m === 30) continue;
+          const value = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+          slots.push({ value, label: formatTime12(value) });
+        }
+      }
+      return slots;
+    }
+
+    function snapToTimeSlot(h, min) {
+      let snapped = Math.round(min / 30) * 30;
+      let hour = h;
+      if (snapped >= 60) {
+        snapped = 0;
+        hour += 1;
+      }
+      if (hour < 7) return "07:00";
+      if (hour > 19 || (hour === 19 && snapped > 0)) return "19:00";
+      return `${String(hour).padStart(2, "0")}:${String(snapped).padStart(2, "0")}`;
+    }
+
+    function appointmentTimeSelectHtml(selectedValue) {
+      const slots = buildAppointmentTimeSlots();
+      const sel = selectedValue || snapToTimeSlot(new Date().getHours(), new Date().getMinutes());
+      return slots
+        .map((s) => `<option value="${s.value}"${s.value === sel ? " selected" : ""}>${esc(s.label)}</option>`)
+        .join("");
     }
 
     function statusCategory(raw) {
@@ -788,7 +821,10 @@
               </label>
               <label class="block">
                 <span class="text-xs font-medium text-gray-600">Time</span>
-                <input id="f_time" type="time" step="60" class="mt-1 w-full border border-gray-300 rounded-lg p-2.5 text-sm" required/>
+                <select id="f_time" class="mt-1 w-full border border-gray-300 rounded-lg p-2.5 text-sm bg-white" required>
+                  ${appointmentTimeSelectHtml()}
+                </select>
+                <span class="text-xs text-gray-400 mt-1 block">30-minute slots only</span>
               </label>
               <label class="block">
                 <span class="text-xs font-medium text-gray-600">Veterinarian</span>
@@ -915,7 +951,8 @@
       if (pick && [...vetSel.options].some((o) => o.value === pick)) vetSel.value = pick;
 
       document.getElementById("f_date").value = localDateISO();
-      document.getElementById("f_time").value = localTimeHM();
+      const timeSel = document.getElementById("f_time");
+      if (timeSel) timeSel.value = localTimeHM();
     }
 
     window._closeApptModal = closeModal;

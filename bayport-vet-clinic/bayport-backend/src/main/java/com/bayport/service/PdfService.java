@@ -7,8 +7,13 @@ import com.bayport.dto.ReportDailyPosRow;
 import com.bayport.dto.ReportNewPatient;
 import com.bayport.dto.ReportSummary;
 import com.bayport.dto.ReportTopItemRow;
+import com.bayport.dto.VaccinationScheduleItem;
+import com.bayport.entity.MedicalRecordType;
 import com.bayport.entity.Pet;
+import com.bayport.entity.PetMedicalRecord;
 import com.bayport.entity.Prescription;
+import com.bayport.entity.Procedure;
+import com.bayport.entity.Reminder;
 import com.bayport.util.MoneyUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,7 +26,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class PdfService {
@@ -1196,6 +1204,258 @@ public class PdfService {
         } catch (Exception e) {
             throw new IllegalStateException("Unable to generate all pets PDF: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Comprehensive medical history PDF — clinic branding, structured sections, chronological tables.
+     */
+    public byte[] buildMedicalHistoryPdf(
+            Pet pet,
+            List<PetMedicalRecord> records,
+            List<Prescription> prescriptions,
+            List<VaccinationScheduleItem> vaccinationSchedule,
+            List<Reminder> reminders) {
+        if (pet == null) {
+            throw new IllegalArgumentException("Pet cannot be null");
+        }
+        try {
+            Document document = new Document(PageSize.A4, 54, 54, 54, 54);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PdfWriter writer = PdfWriter.getInstance(document, baos);
+            writer.setPageEvent(new PetProfileFooterEvent());
+            document.open();
+            document.addTitle("Medical History - " + nullToEmpty(pet.getName()));
+
+            BaseFont base;
+            try {
+                base = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
+            } catch (Exception e) {
+                base = BaseFont.createFont(BaseFont.HELVETICA, BaseFont.WINANSI, BaseFont.EMBEDDED);
+            }
+            Font header = new Font(base, 16, Font.BOLD, CLINIC_BLUE);
+            Font sub = new Font(base, 10, Font.NORMAL, Color.DARK_GRAY);
+            Font section = new Font(base, 13, Font.BOLD, CLINIC_BLUE);
+            Font label = new Font(base, 10, Font.BOLD, Color.DARK_GRAY);
+            Font value = new Font(base, 10, Font.NORMAL, Color.BLACK);
+            Font title = new Font(base, 18, Font.BOLD, CLINIC_BLUE);
+
+            addReportHeader(document, header, sub, null);
+            Paragraph docTitle = new Paragraph("COMPREHENSIVE MEDICAL HISTORY", title);
+            docTitle.setAlignment(Element.ALIGN_CENTER);
+            docTitle.setSpacingAfter(4);
+            document.add(docTitle);
+            Paragraph generated = new Paragraph("Generated: " + TS.format(LocalDateTime.now()), sub);
+            generated.setAlignment(Element.ALIGN_CENTER);
+            generated.setSpacingAfter(16);
+            document.add(generated);
+
+            addSectionTitle(document, "BASIC INFORMATION", section);
+            PdfPTable basic = new PdfPTable(2);
+            basic.setWidthPercentage(100);
+            basic.setWidths(new float[]{1.1f, 2.4f});
+            addRow(basic, "Pet name:", nullToEmpty(pet.getName()), label, value);
+            addRow(basic, "Species / Breed:", nullToEmpty(pet.getSpecies()) + " / " + nullToEmpty(pet.getBreed()), label, value);
+            addRow(basic, "Gender / Age:", nullToEmpty(pet.getGender()) + " / " + (pet.getAge() != null ? pet.getAge() + " yrs" : "N/A"), label, value);
+            addRow(basic, "Date of birth:", pet.getDateOfBirth() != null ? pet.getDateOfBirth().toString() : "N/A", label, value);
+            addRow(basic, "Weight:", nullToEmpty(pet.getWeight()), label, value);
+            addRow(basic, "Microchip:", nullToEmpty(pet.getMicrochip()), label, value);
+            addRow(basic, "Owner:", nullToEmpty(pet.getOwner()), label, value);
+            addRow(basic, "Allergies:", nullToEmpty(pet.getAllergies()), label, value);
+            addRow(basic, "Chronic conditions:", nullToEmpty(pet.getChronicConditions()), label, value);
+            addRow(basic, "Known medications:", nullToEmpty(pet.getKnownMedications()), label, value);
+            document.add(basic);
+
+            if (vaccinationSchedule != null && !vaccinationSchedule.isEmpty()) {
+                addSectionTitle(document, "VACCINATION SCHEDULE & UPCOMING DUE DATES", section);
+                PdfPTable sched = new PdfPTable(5);
+                sched.setWidthPercentage(100);
+                sched.setWidths(new float[]{1.6f, 1.2f, 1.2f, 1.2f, 1.8f});
+                addTableHeader(sched, new String[]{"Vaccine", "Last given", "Next due", "Status", "Source"}, label);
+                for (VaccinationScheduleItem item : vaccinationSchedule) {
+                    sched.addCell(cell(nullToEmpty(item.vaccineName()), value));
+                    sched.addCell(cell(item.lastGiven() != null ? item.lastGiven().toString() : "—", value));
+                    sched.addCell(cell(item.nextDue() != null ? item.nextDue().toString() : "—", value));
+                    sched.addCell(cell(nullToEmpty(item.status()), value));
+                    sched.addCell(cell(nullToEmpty(item.source()), value));
+                }
+                document.add(sched);
+            }
+
+            List<PetMedicalRecord> vaccRecords = filterRecords(records, MedicalRecordType.VACCINATION);
+            if (!vaccRecords.isEmpty() || pet.getLastVaccinationDate() != null) {
+                addSectionTitle(document, "VACCINATION HISTORY", section);
+                if (pet.getLastVaccinationDate() != null) {
+                    document.add(new Paragraph("Last in-clinic vaccination: " + pet.getLastVaccinationDate()
+                            + (pet.getLastVaccinationPlace() != null ? " at " + pet.getLastVaccinationPlace() : "")
+                            + (pet.getLastVaccinationVet() != null ? " by " + pet.getLastVaccinationVet() : ""), value));
+                }
+                if (!vaccRecords.isEmpty()) {
+                    PdfPTable vt = new PdfPTable(6);
+                    vt.setWidthPercentage(100);
+                    vt.setWidths(new float[]{1.1f, 1.4f, 1.2f, 1f, 1.1f, 1.2f});
+                    addTableHeader(vt, new String[]{"Date", "Vaccine", "Dose", "Clinic", "Vet", "Next due"}, label);
+                    for (PetMedicalRecord r : vaccRecords) {
+                        vt.addCell(cell(dateStr(r.getRecordDate()), value));
+                        vt.addCell(cell(nullToEmpty(r.getVaccineType() != null ? r.getVaccineType() : r.getTitle()), value));
+                        vt.addCell(cell(nullToEmpty(r.getDoseNumber()), value));
+                        vt.addCell(cell(nullToEmpty(r.getSourceClinic()), value));
+                        vt.addCell(cell(nullToEmpty(r.getVeterinarian()), value));
+                        vt.addCell(cell(r.getNextDueDate() != null ? r.getNextDueDate().toString() : "—", value));
+                    }
+                    document.add(vt);
+                }
+            }
+
+            addProcedureHistorySection(document, pet, section, label, value);
+
+            addTypedRecordsSection(document, records, MedicalRecordType.CLINICAL_NOTE, "CLINICAL NOTES", section, label, value);
+            addTypedRecordsSection(document, records, MedicalRecordType.DIAGNOSTIC, "DIAGNOSTIC & TEST RESULTS", section, label, value);
+            addTypedRecordsSection(document, records, MedicalRecordType.MEDICATION, "MEDICATIONS & PARASITE PREVENTATIVES", section, label, value);
+            addTypedRecordsSection(document, records, MedicalRecordType.SURGERY, "SURGICAL HISTORY", section, label, value);
+            addTypedRecordsSection(document, records, MedicalRecordType.EXTERNAL_DOCUMENT, "EXTERNAL CLINIC RECORDS", section, label, value);
+
+            if (prescriptions != null && !prescriptions.isEmpty()) {
+                addSectionTitle(document, "PRESCRIPTIONS", section);
+                PdfPTable rx = new PdfPTable(5);
+                rx.setWidthPercentage(100);
+                rx.setWidths(new float[]{1.1f, 1.4f, 1.2f, 1.6f, 1.2f});
+                addTableHeader(rx, new String[]{"Date", "Drug", "Dosage", "Directions", "Prescriber"}, label);
+                prescriptions.stream()
+                        .sorted(Comparator.comparing(Prescription::getDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                        .forEach(p -> {
+                            rx.addCell(cell(p.getDate() != null ? p.getDate().toString() : "", value));
+                            rx.addCell(cell(nullToEmpty(p.getDrug()), value));
+                            rx.addCell(cell(nullToEmpty(p.getDosage()), value));
+                            rx.addCell(cell(nullToEmpty(p.getDirections()), value));
+                            rx.addCell(cell(nullToEmpty(p.getPrescriber()), value));
+                        });
+                document.add(rx);
+            }
+
+            if (reminders != null && !reminders.isEmpty()) {
+                addSectionTitle(document, "REMINDERS", section);
+                PdfPTable rem = new PdfPTable(4);
+                rem.setWidthPercentage(100);
+                rem.setWidths(new float[]{1.2f, 2.4f, 1f, 1f});
+                addTableHeader(rem, new String[]{"Due date", "Message", "Sent", "Auto"}, label);
+                for (Reminder r : reminders) {
+                    rem.addCell(cell(r.getDate() != null ? r.getDate().toString() : "", value));
+                    rem.addCell(cell(truncate(nullToEmpty(r.getMessage()), 120), value));
+                    rem.addCell(cell(r.isSent() ? "Yes" : "No", value));
+                    rem.addCell(cell(r.isAutoGenerated() ? "Yes" : "No", value));
+                }
+                document.add(rem);
+            }
+
+            document.close();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to generate medical history PDF: " + e.getMessage(), e);
+        }
+    }
+
+    private void addProcedureHistorySection(Document document, Pet pet, Font section, Font label, Font value) throws DocumentException {
+        if (pet.getProcedures() == null || pet.getProcedures().isEmpty()) return;
+        addSectionTitle(document, "IN-CLINIC VISIT HISTORY (CHRONOLOGICAL)", section);
+        PdfPTable procTable = new PdfPTable(6);
+        procTable.setWidthPercentage(100);
+        procTable.setWidths(new float[]{1f, 1.4f, 1.1f, 1.6f, 1.4f, 0.9f});
+        addTableHeader(procTable, new String[]{"Date", "Procedure", "Category", "Notes", "Medications", "Vet"}, label);
+        pet.getProcedures().stream()
+                .sorted(Comparator.comparing(Procedure::getPerformedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .forEach(proc -> {
+                    procTable.addCell(cell(proc.getPerformedAt() != null ? proc.getPerformedAt().toString() : "", value));
+                    procTable.addCell(cell(nullToEmpty(proc.getName()), value));
+                    procTable.addCell(cell(nullToEmpty(proc.getCategory()), value));
+                    procTable.addCell(cell(truncate(nullToEmpty(proc.getNotes()), 80), value));
+                    procTable.addCell(cell(truncate(nullToEmpty(proc.getMedications()), 60), value));
+                    procTable.addCell(cell(nullToEmpty(proc.getVet()), value));
+                });
+        document.add(procTable);
+    }
+
+    private void addTypedRecordsSection(
+            Document document,
+            List<PetMedicalRecord> records,
+            MedicalRecordType type,
+            String title,
+            Font section,
+            Font label,
+            Font value) throws DocumentException {
+        List<PetMedicalRecord> filtered = filterRecords(records, type);
+        if (filtered.isEmpty()) return;
+        addSectionTitle(document, title, section);
+        PdfPTable table = new PdfPTable(5);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{1f, 1.4f, 1.2f, 2f, 1.2f});
+        addTableHeader(table, new String[]{"Date", "Title", "Clinic / Vet", "Details", "Attachment"}, label);
+        for (PetMedicalRecord r : filtered) {
+            table.addCell(cell(dateStr(r.getRecordDate()), value));
+            table.addCell(cell(nullToEmpty(r.getTitle()), value));
+            String clinicVet = (nullToEmpty(r.getSourceClinic()) + " / " + nullToEmpty(r.getVeterinarian())).replace(" / $", "");
+            table.addCell(cell(clinicVet, value));
+            String details = switch (type) {
+                case CLINICAL_NOTE -> joinParts(r.getDiagnosis(), r.getTreatmentPlan(), r.getDescription());
+                case DIAGNOSTIC -> joinParts(r.getTestResults(), r.getDescription());
+                case MEDICATION -> joinParts(r.getMedications(), r.getDescription());
+                case SURGERY -> joinParts(r.getDiagnosis(), r.getTreatmentPlan(), r.getDescription());
+                case EXTERNAL_DOCUMENT -> joinParts(r.getDescription(), r.getDiagnosis());
+                default -> nullToEmpty(r.getDescription());
+            };
+            table.addCell(cell(truncate(details, 100), value));
+            table.addCell(cell(r.getAttachmentName() != null ? r.getAttachmentName() : "—", value));
+        }
+        document.add(table);
+    }
+
+    private static List<PetMedicalRecord> filterRecords(List<PetMedicalRecord> records, MedicalRecordType type) {
+        if (records == null) return List.of();
+        return records.stream().filter(r -> r.getRecordType() == type).collect(Collectors.toList());
+    }
+
+    private static void addSectionTitle(Document document, String text, Font font) throws DocumentException {
+        Paragraph p = new Paragraph(text, font);
+        p.setSpacingBefore(14);
+        p.setSpacingAfter(8);
+        document.add(p);
+        LineSeparator line = new LineSeparator(1f, 100f, CLINIC_BLUE, Element.ALIGN_CENTER, -2);
+        document.add(new Chunk(line));
+        document.add(Chunk.NEWLINE);
+    }
+
+    private static void addTableHeader(PdfPTable table, String[] headers, Font font) {
+        for (String h : headers) {
+            PdfPCell c = new PdfPCell(new Phrase(h, font));
+            c.setBackgroundColor(new Color(235, 243, 255));
+            c.setPadding(6);
+            table.addCell(c);
+        }
+    }
+
+    private static PdfPCell cell(String text, Font font) {
+        PdfPCell c = new PdfPCell(new Phrase(text != null ? text : "", font));
+        c.setPadding(5);
+        return c;
+    }
+
+    private static String dateStr(LocalDate d) {
+        return d != null ? d.toString() : "";
+    }
+
+    private static String joinParts(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p != null && !p.isBlank()) {
+                if (sb.length() > 0) sb.append(" | ");
+                sb.append(p.trim());
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max - 3) + "...";
     }
     
     /**

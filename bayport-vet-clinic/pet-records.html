@@ -136,6 +136,7 @@
   <script src="assets/api.js"></script>
   <script src="assets/app.js"></script>
   <script src="assets/app-header.js"></script>
+  <script src="assets/medical-history.js"></script>
   <script>
     guard('pet-records');
     if (typeof initBayportAppHeader === "function") initBayportAppHeader(document.getElementById("bpAppHeader"), { accent: "soft-teal" });
@@ -546,6 +547,18 @@
       }
       return '';
     }
+    function petLastVaccInputValue(p) {
+      const v = p && (p.lastVaccinationDate || p.lastVaccination);
+      if (!v) return '';
+      if (typeof v === 'string') return v.slice(0, 10);
+      if (Array.isArray(v) && v.length >= 3) {
+        return `${v[0]}-${String(v[1]).padStart(2, '0')}-${String(v[2]).padStart(2, '0')}`;
+      }
+      return '';
+    }
+    function escFormVal(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    }
     function readPetDobSave() {
       const v = (document.getElementById('f_dateOfBirth')?.value || '').trim();
       return v || null;
@@ -562,6 +575,7 @@
       try{
       const editing = id ? await repoGetPet(id) : null;
       const dobVal = petDobInputValue(editing);
+      const lastVaccVal = petLastVaccInputValue(editing);
       let currentPhoto = editing?.photo || null;
       lastRawFile = null;
       const initialPhotoSlot =
@@ -571,7 +585,7 @@
 
       modalRoot.innerHTML=`
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onclick="if(event.target===this) closeModal()">
-          <div class="bg-white rounded-2xl w-full max-w-3xl p-6 lg:p-8 flex flex-col max-h-[90vh] shadow-2xl">
+          <div class="bg-white rounded-2xl w-full max-w-4xl p-6 lg:p-8 flex flex-col max-h-[90vh] shadow-2xl">
             <div class="flex items-center justify-between mb-6">
               <h3 class="text-2xl font-semibold text-gray-800">${editing?'Edit':'Add'} Pet</h3>
               <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
@@ -637,6 +651,65 @@
                     <p class="text-xs text-gray-500">Upload a file or capture with your camera.</p>
                   </div>
                 </div>
+              </div>
+
+              <div class="md:col-span-2 border-2 border-sky-100 rounded-xl p-4 bg-sky-50/40 mt-2">
+                <h4 class="text-sm font-semibold text-[var(--soft-teal)] uppercase tracking-wide mb-1">Health profile &amp; last vaccination</h4>
+                <p class="text-xs text-gray-500 mb-4">Capture allergies, medications, and the most recent vaccination while talking with the owner.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <label class="text-sm font-medium text-gray-700">Last vaccination date
+                    <input id="f_lastVaccDate" type="date" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" value="${lastVaccVal}">
+                  </label>
+                  <label class="text-sm font-medium text-gray-700">Place vaccinated
+                    <input id="f_lastVaccPlace" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" value="${escFormVal(editing?.lastVaccinationPlace || '')}" placeholder="Clinic name">
+                  </label>
+                  <label class="text-sm font-medium text-gray-700">Veterinarian
+                    <input id="f_lastVaccVet" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" value="${escFormVal(editing?.lastVaccinationVet || '')}" placeholder="Dr. name">
+                  </label>
+                  <label class="text-sm font-medium text-gray-700 md:col-span-2">Known allergies
+                    <input id="f_allergies" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" value="${escFormVal(editing?.allergies || '')}" placeholder="e.g. chicken, penicillin">
+                  </label>
+                  <label class="text-sm font-medium text-gray-700">Chronic conditions
+                    <input id="f_chronic" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" value="${escFormVal(editing?.chronicConditions || '')}">
+                  </label>
+                  <label class="text-sm font-medium text-gray-700 md:col-span-3">Long-term medications
+                    <textarea id="f_meds" rows="2" class="w-full border-2 border-gray-300 mt-1 rounded-lg p-3 focus:border-[var(--soft-teal)] focus:ring-2 focus:ring-[var(--soft-teal)]/20 outline-none transition-all" placeholder="Current medications or preventatives">${escFormVal(editing?.knownMedications || '')}</textarea>
+                  </label>
+                </div>
+              </div>
+
+              <div class="md:col-span-2 border-2 border-gray-200 rounded-xl p-4 bg-white mt-2">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <h4 class="text-sm font-semibold text-gray-800">Medical history records</h4>
+                    <p class="text-xs text-gray-500 mt-0.5">Add vaccination history, clinical notes, diagnostics, and external clinic documents.</p>
+                  </div>
+                  ${editing?.id ? `<button type="button" id="pfAddRecordBtn" class="text-xs font-semibold rounded-md border border-[var(--soft-teal)] text-[var(--soft-teal)] px-3 py-1.5 hover:bg-[var(--soft-teal)] hover:text-white">+ Add record</button>` : ''}
+                </div>
+                <div id="pfMedQuickAdd" class="${editing?.id ? 'hidden' : ''} border border-dashed border-gray-300 rounded-lg p-4 mb-3 bg-gray-50/50">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label class="text-sm text-gray-600 md:col-span-2">Record type
+                      <select id="pf_mr_type" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm">
+                        <option value="VACCINATION">Vaccination history</option>
+                        <option value="CLINICAL_NOTE">Clinical notes</option>
+                        <option value="DIAGNOSTIC">Diagnostic &amp; test results</option>
+                        <option value="MEDICATION">Medications &amp; preventatives</option>
+                        <option value="SURGERY">Surgical history</option>
+                        <option value="EXTERNAL_DOCUMENT">External clinic document</option>
+                      </select>
+                    </label>
+                    <label class="text-sm text-gray-600">Date<input id="pf_mr_date" type="date" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm"></label>
+                    <label class="text-sm text-gray-600">Title<input id="pf_mr_title" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm" placeholder="e.g. Rabies booster"></label>
+                    <label class="text-sm text-gray-600">Source clinic<input id="pf_mr_clinic" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm" placeholder="External clinic"></label>
+                    <label class="text-sm text-gray-600">Veterinarian<input id="pf_mr_vet" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm"></label>
+                    <label class="text-sm text-gray-600 pf-vacc-only">Vaccine type<input id="pf_mr_vaccine" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm" placeholder="Rabies, 5-in-1"></label>
+                    <label class="text-sm text-gray-600 pf-vacc-only">Next due date<input id="pf_mr_nextdue" type="date" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm"></label>
+                    <label class="text-sm text-gray-600 md:col-span-2">Notes<textarea id="pf_mr_notes" rows="2" class="w-full border border-gray-300 rounded-lg p-2.5 mt-1 text-sm" placeholder="Details from owner or external records"></textarea></label>
+                  </div>
+                  <button type="button" id="pfAddPendingBtn" class="mt-3 text-sm font-semibold text-[var(--soft-teal)] hover:underline">+ Add to medical history list</button>
+                </div>
+                <div id="pfMedPendingList" class="space-y-2 mb-3"></div>
+                <div id="pfMedExistingList" class="space-y-4 text-sm"></div>
               </div>
             </div>
             </div>
@@ -962,6 +1035,106 @@
       };
       ownerSearch.addEventListener('input', renderOwnerSearch);
 
+      const pendingMedRecords = [];
+      const pfMrDate = document.getElementById('pf_mr_date');
+      if (pfMrDate && !pfMrDate.value) pfMrDate.value = new Date().toISOString().slice(0, 10);
+
+      function togglePfVaccFields() {
+        const isVacc = document.getElementById('pf_mr_type')?.value === 'VACCINATION';
+        document.querySelectorAll('.pf-vacc-only').forEach((el) => {
+          el.classList.toggle('hidden', !isVacc);
+        });
+      }
+      document.getElementById('pf_mr_type')?.addEventListener('change', togglePfVaccFields);
+      togglePfVaccFields();
+
+      function renderPendingMedList() {
+        const el = document.getElementById('pfMedPendingList');
+        if (!el) return;
+        if (!pendingMedRecords.length) {
+          el.innerHTML = '';
+          return;
+        }
+        const labels = (typeof MedicalHistory !== 'undefined' && MedicalHistory.TYPE_LABEL) ? MedicalHistory.TYPE_LABEL : {};
+        el.innerHTML = pendingMedRecords.map((r, i) => `
+          <div class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+            <span><strong>${labels[r.recordType] || r.recordType}</strong> — ${r.title || 'Untitled'}${r.recordDate ? ' · ' + r.recordDate : ''}</span>
+            <button type="button" class="text-red-600 text-xs font-semibold hover:underline" data-pending-idx="${i}">Remove</button>
+          </div>`).join('');
+        el.querySelectorAll('[data-pending-idx]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            pendingMedRecords.splice(Number(btn.dataset.pendingIdx), 1);
+            renderPendingMedList();
+          });
+        });
+      }
+
+      document.getElementById('pfAddPendingBtn')?.addEventListener('click', () => {
+        const recordType = document.getElementById('pf_mr_type')?.value || 'CLINICAL_NOTE';
+        const title = (document.getElementById('pf_mr_title')?.value || '').trim();
+        if (!title) { alert('Please enter a title for the medical record'); return; }
+        const payload = {
+          recordType,
+          recordDate: document.getElementById('pf_mr_date')?.value || null,
+          title,
+          sourceClinic: (document.getElementById('pf_mr_clinic')?.value || '').trim(),
+          veterinarian: (document.getElementById('pf_mr_vet')?.value || '').trim(),
+          description: (document.getElementById('pf_mr_notes')?.value || '').trim(),
+          externalRecord: true,
+        };
+        if (recordType === 'VACCINATION') {
+          payload.vaccineType = (document.getElementById('pf_mr_vaccine')?.value || '').trim();
+          payload.nextDueDate = document.getElementById('pf_mr_nextdue')?.value || null;
+        }
+        pendingMedRecords.push(payload);
+        renderPendingMedList();
+        document.getElementById('pf_mr_title').value = '';
+        document.getElementById('pf_mr_notes').value = '';
+        document.getElementById('pf_mr_vaccine').value = '';
+        document.getElementById('pf_mr_nextdue').value = '';
+      });
+
+      async function refreshPetFormMedHistory(petId) {
+        const wrap = document.getElementById('pfMedExistingList');
+        if (!wrap || !petId || typeof MedicalHistory === 'undefined') return;
+        try {
+          const records = await MedicalHistory.loadRecords(petId);
+          if (!records.length) {
+            wrap.innerHTML = '<p class="text-sm text-gray-500 italic">No medical history recorded yet. Use + Add record to import external history.</p>';
+            return;
+          }
+          const byType = {};
+          records.forEach((r) => {
+            if (!byType[r.recordType]) byType[r.recordType] = [];
+            byType[r.recordType].push(r);
+          });
+          wrap.innerHTML = Object.entries(byType).map(([type, list]) => `
+            <div>
+              <h5 class="text-xs font-semibold text-gray-600 uppercase mb-1">${MedicalHistory.TYPE_LABEL[type] || type}</h5>
+              ${list.map((r) => `<div class="border border-gray-100 rounded-lg p-2 mb-1 bg-gray-50 flex justify-between gap-2">
+                <span>${r.title || '—'}${r.recordDate ? ' · ' + r.recordDate : ''}</span>
+                <button type="button" class="text-[var(--soft-teal)] text-xs font-semibold shrink-0" data-edit-rec="${r.id}">Edit</button>
+              </div>`).join('')}
+            </div>`).join('');
+          wrap.querySelectorAll('[data-edit-rec]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              MedicalHistory.openEditModal(petId, Number(btn.dataset.editRec), () => refreshPetFormMedHistory(petId));
+            });
+          });
+        } catch (err) {
+          wrap.innerHTML = '<p class="text-sm text-red-600">Could not load medical history.</p>';
+        }
+      }
+
+      if (editing?.id) {
+        refreshPetFormMedHistory(editing.id);
+        document.getElementById('pfAddRecordBtn')?.addEventListener('click', () => {
+          if (typeof MedicalHistory !== 'undefined') {
+            MedicalHistory.openAddModal(editing.id, 'EXTERNAL_DOCUMENT', () => refreshPetFormMedHistory(editing.id));
+          }
+        });
+      }
+
       window.closeModal = () => {
         stopPetWebcam();
         revokePreviewObjectUrl();
@@ -1007,7 +1180,13 @@
           address:addressInput?.value||'',
           federation:gv('federation')||'N/A',
           photo: window.USE_API ? (prevPet?.photo ?? null) : currentPhoto,
-          ownerId
+          ownerId,
+          allergies: (document.getElementById('f_allergies')?.value || '').trim(),
+          chronicConditions: (document.getElementById('f_chronic')?.value || '').trim(),
+          knownMedications: (document.getElementById('f_meds')?.value || '').trim(),
+          lastVaccinationDate: (document.getElementById('f_lastVaccDate')?.value || '').trim() || null,
+          lastVaccinationPlace: (document.getElementById('f_lastVaccPlace')?.value || '').trim(),
+          lastVaccinationVet: (document.getElementById('f_lastVaccVet')?.value || '').trim(),
         };
         let savedPetId = editId;
         try {
@@ -1023,6 +1202,15 @@
           if (typeof window.showToast === 'function') window.showToast(msg);
           else alert(msg);
           return;
+        }
+        if (savedPetId && pendingMedRecords.length && window.USE_API && Api.medicalRecords) {
+          for (const rec of pendingMedRecords) {
+            try {
+              await Api.medicalRecords.create(savedPetId, rec);
+            } catch (medErr) {
+              console.warn('Medical record save failed:', medErr);
+            }
+          }
         }
         closeModal();
         if (typeof window.showToast === 'function') {

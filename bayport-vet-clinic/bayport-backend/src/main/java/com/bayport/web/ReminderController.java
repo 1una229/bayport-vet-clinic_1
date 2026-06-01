@@ -8,9 +8,11 @@ import com.bayport.entity.ReminderType;
 import com.bayport.repository.OwnerRepository;
 import com.bayport.repository.PetRepository;
 import com.bayport.repository.ReminderRepository;
+import com.bayport.service.ReminderScheduler;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -20,11 +22,17 @@ public class ReminderController {
     private final ReminderRepository repo;
     private final PetRepository pets;
     private final OwnerRepository owners;
+    private final ReminderScheduler reminderScheduler;
 
-    public ReminderController(ReminderRepository repo, PetRepository pets, OwnerRepository owners) {
+    public ReminderController(
+            ReminderRepository repo,
+            PetRepository pets,
+            OwnerRepository owners,
+            ReminderScheduler reminderScheduler) {
         this.repo = repo;
         this.pets = pets;
         this.owners = owners;
+        this.reminderScheduler = reminderScheduler;
     }
 
     // Convert Reminder → ReminderDTO
@@ -87,5 +95,11 @@ public class ReminderController {
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
         repo.deleteById(id);
+    }
+
+    /** Manually trigger delivery of all due pet reminders (same logic as the hourly scheduler). */
+    @PostMapping("/dispatch-due")
+    public Map<String, Object> dispatchDue() {
+        return reminderScheduler.sendDueReminders();
     }
 }

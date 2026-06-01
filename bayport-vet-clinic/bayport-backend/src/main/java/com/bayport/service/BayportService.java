@@ -389,7 +389,7 @@ public class BayportService {
 
     /**
      * Parses appointment time and returns normalized {@code HH:mm} (24-hour).
-     * Any minute is allowed — there is no 30-minute "slot grid" validation.
+     * Only 30-minute slots are allowed (minutes must be 00 or 30).
      */
     private String normalizeAppointmentTime(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
@@ -403,10 +403,18 @@ public class BayportService {
             try {
                 lt = LocalTime.parse(t, DateTimeFormatter.ofPattern("H:mm"));
             } catch (DateTimeParseException ex) {
-                throw new IllegalArgumentException("Invalid time. Use a 24-hour clock time such as 09:15 or 14:05.");
+                throw new IllegalArgumentException("Invalid time. Use a 30-minute slot such as 09:00 or 14:30.");
             }
         }
+        validateThirtyMinuteSlot(lt);
         return String.format("%02d:%02d", lt.getHour(), lt.getMinute());
+    }
+
+    private void validateThirtyMinuteSlot(LocalTime lt) {
+        if (lt.getMinute() % 30 != 0) {
+            throw new IllegalArgumentException(
+                    "Appointments must use 30-minute time slots (e.g. 09:00, 09:30, 10:00).");
+        }
     }
 
     /**

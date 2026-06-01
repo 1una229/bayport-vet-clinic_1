@@ -1,80 +1,276 @@
 package com.bayport.service;
 
-import com.bayport.entity.Reminder;
+
+
 import com.bayport.entity.Owner;
+
+import com.bayport.entity.Reminder;
+
 import com.bayport.entity.ReminderType;
+
 import com.bayport.repository.OwnerRepository;
+
 import com.bayport.repository.ReminderRepository;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+
+import org.springframework.context.event.EventListener;
+
 import org.springframework.scheduling.annotation.Scheduled;
+
 import org.springframework.stereotype.Service;
 
+
+
 import java.time.LocalDate;
+
 import java.time.LocalDateTime;
+
+import java.util.HashMap;
+
 import java.util.List;
 
+import java.util.Map;
+
+
+
 @Slf4j
+
 @Service
+
 public class ReminderScheduler {
 
+
+
     @Autowired
+
     ReminderRepository reminderRepo;
 
+
+
     @Autowired
+
     OwnerRepository ownerRepo;
 
-    @Autowired(required = false)
+
+
+    @Autowired
+
     EmailService emailService;
 
-    @Scheduled(cron = "0 0 9 * * *")  // 9AM daily
-    public void sendDueReminders() {
-        log.info("Starting scheduled reminder email task for date: {}", LocalDate.now());
-        
-        List<Reminder> due = reminderRepo.findBySentFalseAndDateAndType(LocalDate.now(), ReminderType.PET);
-        log.info("Found {} reminders due for today", due.size());
 
-        if (emailService == null) {
-            log.warn("EmailService not available. Reminder emails will not be sent. " +
-                    "Configure SMTP settings in application.properties to enable email notifications.");
-            return;
+
+    /** Run once after the app starts so due vaccine reminders are not missed until 9 AM. */
+
+    @EventListener(ApplicationReadyEvent.class)
+
+    public void onApplicationReady() {
+
+        log.info("Running startup reminder dispatch…");
+
+        sendDueReminders();
+
+    }
+
+
+
+    /** Every hour on the hour — catches due/overdue pet reminders (including auto-generated vaccine reminders). */
+
+    @Scheduled(cron = "0 0 * * * *")
+
+    public void sendDueRemindersHourly() {
+
+        sendDueReminders();
+
+    }
+
+
+
+    /** Daily at 9 AM as a backup pass. */
+
+    @Scheduled(cron = "0 0 9 * * *")
+
+    public void sendDueRemindersDaily() {
+
+        sendDueReminders();
+
+    }
+
+
+
+    public Map<String, Object> sendDueReminders() {
+
+        LocalDate today = LocalDate.now();
+
+        log.info("Checking pet reminders due on or before {}", today);
+
+
+
+        Map<String, Object> result = new HashMap<>();
+
+        result.put("mailConfigured", emailService.isConfigured());
+
+        result.put("checkedAt", LocalDateTime.now().toString());
+
+
+
+        List<Reminder> due = reminderRepo.findBySentFalseAndDateLessThanEqualAndType(today, ReminderType.PET);
+
+        result.put("dueCount", due.size());
+
+
+
+        if (due.isEmpty()) {
+
+            log.debug("No unsent pet reminders due for {}", today);
+
+            result.put("sentCount", 0);
+
+            result.put("failedCount", 0);
+
+            result.put("skippedCount", 0);
+
+            result.put("message", "No due reminders to send.");
+
+            return result;
+
         }
+
+        log.info("Found {} unsent pet reminder(s) due on or before {}", due.size(), today);
+
+
+
+        if (!emailService.isConfigured()) {
+
+            log.warn(
+
+                    "Email (SMTP) is not configured — {} reminder(s) were not sent. "
+
+                            + "Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD (Gmail app password) and restart.",
+
+                    due.size());
+
+            result.put("sentCount", 0);
+
+            result.put("failedCount", 0);
+
+            result.put("skippedCount", due.size());
+
+            result.put("message",
+
+                    "Email (SMTP) is not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD and restart.");
+
+            return result;
+
+        }
+
+
 
         int sentCount = 0;
+
         int failedCount = 0;
 
+        int skippedCount = 0;
+
+
+
         for (Reminder r : due) {
+
             try {
-                Owner owner = ownerRepo.findById(r.getOwnerId()).orElse(null);
-                if (owner == null) {
-                    log.warn("Reminder {} has invalid ownerId: {}. Skipping.", r.getId(), r.getOwnerId());
+
+                if (r.getOwnerId() == null) {
+
+                    log.warn("Reminder {} has no ownerId. Skipping.", r.getId());
+
+                    skippedCount++;
+
                     continue;
-                }
-                
-                if (owner.getEmail() == null || owner.getEmail().trim().isEmpty()) {
-                    log.warn("Reminder {} for owner {} has no email address. Skipping.", r.getId(), owner.getFullName());
-                    continue;
+
                 }
 
-                emailService.send(
-                    owner.getEmail(),
-                    "Pet Reminder - Bayport Veterinary Clinic",
-                    r.getMessage()
-                );
-                
+                Owner owner = ownerRepo.findById(r.getOwnerId()).orElse(null);
+
+                if (owner == null) {
+
+                    log.warn("Reminder {} has invalid ownerId: {}. Skipping.", r.getId(), r.getOwnerId());
+
+                    skippedCount++;
+
+                    continue;
+
+                }
+
+
+
+                String to = owner.getEmail();
+
+                if (to == null || to.trim().isEmpty()) {
+
+                    log.warn("Reminder {} for owner {} has no email address. Skipping.", r.getId(), owner.getFullName());
+
+                    skippedCount++;
+
+                    continue;
+
+                }
+
+
+
+                String subject = r.isAutoGenerated()
+
+                        ? "Vaccination Reminder - Bayport Veterinary Clinic"
+
+                        : "Pet Reminder - Bayport Veterinary Clinic";
+
+
+
+                emailService.send(to.trim(), subject, r.getMessage());
+
+
+
                 r.setSent(true);
+
                 r.setSentAt(LocalDateTime.now());
+
+                r.setTargetEmail(to.trim());
+
                 reminderRepo.save(r);
+
                 sentCount++;
-                log.info("Reminder email sent successfully to: {} (Reminder ID: {})", owner.getEmail(), r.getId());
-                
+
+                log.info("Reminder email sent to {} (reminder ID: {}, auto={})", to, r.getId(), r.isAutoGenerated());
+
+
+
             } catch (Exception e) {
+
                 failedCount++;
-                log.error("Failed to send reminder email for reminder ID: {}. Error: {}", r.getId(), e.getMessage(), e);
-                // Don't mark as sent if email failed - will retry next day
+
+                log.error("Failed to send reminder ID {}: {}", r.getId(), e.getMessage(), e);
+
             }
+
         }
-        
-        log.info("Reminder email task completed. Sent: {}, Failed: {}", sentCount, failedCount);
+
+
+
+        log.info("Reminder dispatch finished. Sent: {}, Failed: {}, Skipped: {}", sentCount, failedCount, skippedCount);
+
+        result.put("sentCount", sentCount);
+
+        result.put("failedCount", failedCount);
+
+        result.put("skippedCount", skippedCount);
+
+        result.put("message", String.format("Sent %d, failed %d, skipped %d.", sentCount, failedCount, skippedCount));
+
+        return result;
+
     }
+
 }
+

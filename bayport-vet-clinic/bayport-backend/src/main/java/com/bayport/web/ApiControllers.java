@@ -400,7 +400,18 @@ public class ApiControllers {
             mfaService.sendOtpByEmail(email);
             return ResponseEntity.ok(Map.of("status", "OTP_SENT", "message", "OTP sent to email"));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", "Failed to send OTP: " + e.getMessage()));
+            String detail = e.getMessage();
+            Throwable cause = e.getCause();
+            while ((detail == null || detail.isBlank()) && cause != null) {
+                detail = cause.getMessage();
+                cause = cause.getCause();
+            }
+            if (detail == null || detail.isBlank()) {
+                detail = "Email delivery failed";
+            }
+            detail = detail.replaceFirst("^(Failed to send OTP:\\s*)+", "")
+                           .replaceFirst("^(Failed to send email:\\s*)+", "");
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to send OTP: " + detail));
         }
     }
     
@@ -661,6 +672,8 @@ public class ApiControllers {
         Map<String, Object> body = new HashMap<>();
         body.put("status", "UP");
         body.put("timestamp", java.time.Instant.now().toString());
+        body.put("mailConfigured", emailService.isConfigured());
+        body.put("schedulingEnabled", true);
         return ResponseEntity.ok(body);
     }
 

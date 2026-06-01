@@ -153,12 +153,22 @@
     <div class="bg-white rounded-xl w-full max-w-lg shadow-xl p-6 space-y-4">
       <h3 class="text-lg font-bold text-slate-900">New invoice</h3>
       <p class="text-xs text-slate-500">Creates a pending charge. Collect payment in the POS to sync with sales.</p>
+      <label class="block text-xs font-medium text-slate-600">Pet name <span class="text-red-500">*</span></label>
+      <select id="niPetSelect" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+        <option value="">— Select a pet —</option>
+      </select>
       <label class="block text-xs font-medium text-slate-600">Pet ID <span class="text-red-500">*</span></label>
-      <input id="niPetId" type="number" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. 12" />
+      <input id="niPetId" type="text" readonly class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-700 cursor-not-allowed" placeholder="Auto-filled from pet selection" />
+      <div id="niServicePickWrap" class="hidden space-y-1">
+        <label class="block text-xs font-medium text-slate-600">Suggested service</label>
+        <select id="niServicePick" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"></select>
+        <p class="text-xs text-slate-400">Pulled from pending charges, recent procedures, or scheduled appointments.</p>
+      </div>
       <label class="block text-xs font-medium text-slate-600">Description</label>
       <input id="niDesc" type="text" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Service description" />
       <label class="block text-xs font-medium text-slate-600">Amount (₱)</label>
       <input id="niAmount" type="number" step="0.01" min="0" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="0.00" />
+      <p id="niAutoHint" class="hidden text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2"></p>
       <div class="flex justify-end gap-2 pt-2">
         <button type="button" id="niCancel" class="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50">Cancel</button>
         <button type="button" id="niSave" class="px-4 py-2 rounded-lg bg-[var(--soft-teal)] text-white text-sm font-semibold hover:brightness-105">Create</button>
@@ -178,6 +188,9 @@
 
     let billing = [];
     let sales = [];
+    let petsCache = [];
+    let appointmentsCache = [];
+    let invoiceChargeOptions = [];
     let selectedId = null;
     let tab = "all";
     let page = 1;
@@ -199,6 +212,183 @@
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+    }
+
+    function lookupCatalogPrice(name) {
+      if (!name) return 0;
+      const needle = String(name).trim().toLowerCase();
+      const cat = window.PROCEDURE_CATALOG || {};
+      for (const items of Object.values(cat)) {
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          if (String(item.name || "").trim().toLowerCase() === needle) {
+            return Number(item.price) || 0;
+          }
+        }
+      }
+      for (const items of Object.values(cat)) {
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          const n = String(item.name || "").trim().toLowerCase();
+          if (n && (needle.includes(n) || n.includes(needle))) {
+            return Number(item.price) || 0;
+          }
+        }
+      }
+      return 0;
+    }
+
+    function applyChargeOption(opt) {
+      if (!opt) return;
+      document.getElementById("niDesc").value = opt.desc || "";
+      document.getElementById("niAmount").value = opt.amount != null && opt.amount !== "" ? opt.amount : "";
+      const hint = document.getElementById("niAutoHint");
+      if (opt.source) {
+        hint.textContent = `Auto-filled from ${opt.source.toLowerCase()}. You can edit before creating.`;
+        hint.classList.remove("hidden");
+      } else {
+        hint.classList.add("hidden");
+      }
+    }
+
+    function buildChargeOptions(petId, pet, allBilling, allAppts) {
+      const options = [];
+      const pid = Number(petId);
+      const pending = (allBilling || [])
+        .filter((b) => Number(b.petId) === pid && String(b.status || "").toUpperCase() === "PENDING")
+        .sort((a, b) => String(b.issuedAt || "").localeCompare(String(a.issuedAt || "")));
+      pending.forEach((b) => {
+        options.push({
+          desc: b.description || "Pending charge",
+          amount: Number(b.amount) || 0,
+          source: "Pending charge",
+        });
+      });
+
+      const billedProcIds = new Set(
+        pending
+          .filter((b) => String(b.referenceType || "").toUpperCase() === "PROCEDURE" && b.referenceId != null)
+          .map((b) => Number(b.referenceId)),
+      );
+      const procs = (pet?.procedures || [])
+        .filter((p) => Number(p.cost) > 0 && !billedProcIds.has(Number(p.id)))
+        .sort((a, b) => String(b.performedAt || "").localeCompare(String(a.performedAt || "")));
+      procs.forEach((p) => {
+        options.push({
+          desc: [p.name, p.category].filter(Boolean).join(" — ") || p.name || "Procedure",
+          amount: Number(p.cost) || 0,
+          source: "Recent procedure",
+        });
+      });
+
+      const today = new Date().toISOString().slice(0, 10);
+      const skipAppt = new Set(["done", "cancelled", "canceled", "completed"]);
+      (allAppts || [])
+        .filter(
+          (a) =>
+            Number(a.petId) === pid &&
+            String(a.date || "").slice(0, 10) >= today &&
+            !skipAppt.has(String(a.status || "").toLowerCase()),
+        )
+        .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
+        .forEach((a) => {
+          const desc = (a.code || "").trim() || `Scheduled visit — ${a.date || ""} ${a.time || ""}`.trim();
+          const price = lookupCatalogPrice(a.code);
+          options.push({
+            desc,
+            amount: price > 0 ? price : "",
+            source: "Scheduled appointment",
+          });
+        });
+
+      const seen = new Set();
+      return options.filter((o) => {
+        const key = `${o.desc}|${o.amount}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    async function populatePetSelect() {
+      const sel = document.getElementById("niPetSelect");
+      try {
+        const pets = await Api.pets.list();
+        petsCache = Array.isArray(pets) ? pets.slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""))) : [];
+        sel.innerHTML =
+          `<option value="">— Select a pet —</option>` +
+          petsCache
+            .map((p) => {
+              const owner = p.owner ? ` · ${p.owner}` : "";
+              return `<option value="${p.id}">${esc(p.name || "Pet")}${esc(owner)}</option>`;
+            })
+            .join("");
+      } catch (e) {
+        console.error("populatePetSelect pets", e);
+        toast((e.message || "Could not load pets for invoice.").slice(0, 120), true);
+        return;
+      }
+      try {
+        const appts = await Api.appts.list();
+        appointmentsCache = Array.isArray(appts) ? appts : [];
+      } catch (e) {
+        console.warn("Appointments unavailable for invoice auto-fill", e);
+        appointmentsCache = [];
+      }
+    }
+
+    function resetInvoiceModal() {
+      document.getElementById("niPetSelect").value = "";
+      document.getElementById("niPetId").value = "";
+      document.getElementById("niDesc").value = "";
+      document.getElementById("niAmount").value = "";
+      document.getElementById("niServicePickWrap").classList.add("hidden");
+      document.getElementById("niServicePick").innerHTML = "";
+      document.getElementById("niAutoHint").classList.add("hidden");
+      invoiceChargeOptions = [];
+    }
+
+    async function onInvoicePetSelected(petId) {
+      const idEl = document.getElementById("niPetId");
+      const pickWrap = document.getElementById("niServicePickWrap");
+      const pickSel = document.getElementById("niServicePick");
+      const hint = document.getElementById("niAutoHint");
+      if (!petId) {
+        idEl.value = "";
+        document.getElementById("niDesc").value = "";
+        document.getElementById("niAmount").value = "";
+        pickWrap.classList.add("hidden");
+        hint.classList.add("hidden");
+        return;
+      }
+      idEl.value = String(petId);
+      try {
+        const pet = await Api.pets.get(Number(petId));
+        invoiceChargeOptions = buildChargeOptions(petId, pet, billing, appointmentsCache);
+        if (!invoiceChargeOptions.length) {
+          pickWrap.classList.add("hidden");
+          hint.textContent = "No pending charges or scheduled services found — enter description and amount manually.";
+          hint.classList.remove("hidden");
+          document.getElementById("niDesc").value = "";
+          document.getElementById("niAmount").value = "";
+          return;
+        }
+        if (invoiceChargeOptions.length === 1) {
+          pickWrap.classList.add("hidden");
+          applyChargeOption(invoiceChargeOptions[0]);
+          return;
+        }
+        pickWrap.classList.remove("hidden");
+        pickSel.innerHTML = invoiceChargeOptions
+          .map(
+            (o, i) =>
+              `<option value="${i}">${esc(o.desc)}${o.amount ? " — ₱" + fmtMoney(o.amount) : ""} (${esc(o.source)})</option>`,
+          )
+          .join("");
+        applyChargeOption(invoiceChargeOptions[0]);
+      } catch (e) {
+        toast("Could not load pet treatment records.", true);
+      }
     }
 
     function fmtMoney(n) {
@@ -727,20 +917,32 @@
       }
     };
 
-    document.getElementById("btnNewInvoice").onclick = () => {
+    document.getElementById("btnNewInvoice").onclick = async () => {
+      resetInvoiceModal();
+      await populatePetSelect();
       document.getElementById("newInvModal").classList.remove("hidden");
       document.getElementById("newInvModal").classList.add("flex");
     };
     document.getElementById("niCancel").onclick = () => {
       document.getElementById("newInvModal").classList.add("hidden");
       document.getElementById("newInvModal").classList.remove("flex");
+      resetInvoiceModal();
     };
+    document.getElementById("niPetSelect").addEventListener("change", (e) => {
+      onInvoicePetSelected(e.target.value);
+    });
+    document.getElementById("niServicePick").addEventListener("change", (e) => {
+      const idx = Number(e.target.value);
+      if (!Number.isNaN(idx) && invoiceChargeOptions[idx]) {
+        applyChargeOption(invoiceChargeOptions[idx]);
+      }
+    });
     document.getElementById("niSave").onclick = async () => {
       const petId = Number(document.getElementById("niPetId").value);
       const amount = Number(document.getElementById("niAmount").value);
       const description = (document.getElementById("niDesc").value || "").trim() || "Invoice line";
       if (!petId || amount <= 0) {
-        toast("Enter a valid pet ID and amount.", true);
+        toast("Select a pet and enter a valid amount.", true);
         return;
       }
       try {
@@ -751,7 +953,7 @@
           pet = null;
         }
         if (!pet) {
-          toast("Pet not found for that ID.", true);
+          toast("Pet not found.", true);
           return;
         }
         await Api.billing.create({
@@ -766,9 +968,6 @@
           referenceId: null,
         });
         document.getElementById("niCancel").click();
-        document.getElementById("niPetId").value = "";
-        document.getElementById("niAmount").value = "";
-        document.getElementById("niDesc").value = "";
         toast("Invoice created. Collect payment in POS.", false);
         await loadAll();
       } catch (err) {

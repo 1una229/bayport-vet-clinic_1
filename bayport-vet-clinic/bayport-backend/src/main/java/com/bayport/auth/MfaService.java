@@ -4,6 +4,7 @@ import com.bayport.entity.MfaCode;
 import com.bayport.entity.User;
 import com.bayport.repository.MfaCodeRepository;
 import com.bayport.service.EmailService;
+import com.bayport.service.NotificationService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -14,10 +15,15 @@ import java.util.Random;
 public class MfaService {
     private final MfaCodeRepository mfaCodeRepository;
     private final EmailService emailService;
+    private final NotificationService notificationService;
 
-    public MfaService(MfaCodeRepository mfaCodeRepository, EmailService emailService) {
+    public MfaService(
+            MfaCodeRepository mfaCodeRepository,
+            EmailService emailService,
+            NotificationService notificationService) {
         this.mfaCodeRepository = mfaCodeRepository;
         this.emailService = emailService;
+        this.notificationService = notificationService;
     }
 
     public void sendMfaCode(User user) {
@@ -34,20 +40,28 @@ public class MfaService {
         mfa.setUsed(false);
         
         mfaCodeRepository.save(mfa);
-        
-        try {
-            emailService.send(
-                user.getEmail(),
-                "Your Verification Code",
-                "Your verification code is: " + code + "\n\nThis code will expire in 5 minutes."
-            );
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send MFA code: " + e.getMessage(), e);
+
+        if (emailService.isConfigured()) {
+            try {
+                emailService.send(
+                    user.getEmail(),
+                    "Your Verification Code",
+                    "Your verification code is: " + code + "\n\nThis code will expire in 5 minutes."
+                );
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to send MFA code: " + e.getMessage(), e);
+            }
+        } else {
+            notificationService.notifyAdminsLoginOtp(user.getUsername(), code);
         }
     }
 
     public boolean verifyCode(User user, String code) {
-        Optional<MfaCode> opt = mfaCodeRepository.findTopByUserAndCodeAndUsedFalseOrderByExpiresAtDesc(user, code);
+        String normalized = code == null ? "" : code.trim();
+        if (normalized.isEmpty()) {
+            return false;
+        }
+        Optional<MfaCode> opt = mfaCodeRepository.findTopByUserAndCodeAndUsedFalseOrderByExpiresAtDesc(user, normalized);
         
         if (opt.isEmpty()) {
             return false;
@@ -70,6 +84,10 @@ public class MfaService {
         if (email == null || email.trim().isEmpty()) {
             throw new RuntimeException("Email is required");
         }
+        if (!emailService.isConfigured()) {
+            throw new IllegalStateException(
+                    "Email (SMTP) is not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD, then restart.");
+        }
 
         String code = String.valueOf(1000 + new Random().nextInt(9000)); // 4-digit code
         
@@ -81,20 +99,21 @@ public class MfaService {
         mfa.setUsed(false);
         
         mfaCodeRepository.save(mfa);
-        
+
         try {
             String termsAndConditions = getTermsAndConditions();
             String emailBody = "Your verification code is: " + code + "\n\nThis code will expire in 5 minutes.\n\nUse this code to complete your account creation.\n\n" +
                     "================================================================================\n\n" +
                     termsAndConditions;
-            
+
             emailService.send(
                 email,
                 "Your Verification Code for Account Creation",
                 emailBody
             );
         } catch (Exception e) {
-            throw new RuntimeException("Failed to send OTP: " + e.getMessage(), e);
+            String message = e.getMessage() == null ? "Email delivery failed" : e.getMessage();
+            throw new RuntimeException(message, e);
         }
     }
     
@@ -178,7 +197,11 @@ public class MfaService {
 
     // Verify OTP by email only (for user creation)
     public boolean verifyOtpByEmail(String email, String code) {
-        Optional<MfaCode> opt = mfaCodeRepository.findTopByEmailAndCodeAndUsedFalseOrderByExpiresAtDesc(email, code);
+        String normalized = code == null ? "" : code.trim();
+        if (normalized.isEmpty() || email == null || email.trim().isEmpty()) {
+            return false;
+        }
+        Optional<MfaCode> opt = mfaCodeRepository.findTopByEmailAndCodeAndUsedFalseOrderByExpiresAtDesc(email.trim(), normalized);
         
         if (opt.isEmpty()) {
             return false;
