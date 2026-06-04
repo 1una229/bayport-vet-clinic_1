@@ -78,9 +78,12 @@
           <p><strong>Automatic vaccine reminders</strong> and <strong>MFA login codes</strong> require Gmail SMTP on the backend.</p>
           <p class="text-xs text-amber-900">Set environment variables before starting the app:</p>
           <ul class="text-xs list-disc pl-5 space-y-1 font-mono">
-            <li>SPRING_MAIL_USERNAME=your-clinic@gmail.com</li>
+            <li>SPRING_MAIL_HOST=smtp.gmail.com</li>
+            <li>SPRING_MAIL_USERNAME=bayportveterinaryclinic@gmail.com</li>
             <li>SPRING_MAIL_PASSWORD=your-gmail-app-password</li>
+            <li>SPRING_MAIL_PORT=465</li>
           </ul>
+          <p class="text-xs text-red-800 font-semibold">Never put your @gmail.com address in SPRING_MAIL_HOST — that causes “UnknownHostException”.</p>
           <p class="text-xs text-amber-900">Create an app password at Google Account → Security → App passwords. Restart the desktop app or backend after changing these.</p>
           <p class="text-xs">If email is not configured, MFA codes appear in <strong>Admin notifications</strong> (bell icon) instead.</p>
           <div id="emailTestPanel" class="hidden mt-3 space-y-2 border-t border-amber-200 pt-3">
