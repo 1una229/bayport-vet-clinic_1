@@ -37,7 +37,7 @@
 ### Option B — Manual Web Service
 
 1. **New +** → **Web Service** → connect GitHub repo
-2. **Root Directory:** `bayport-vet-clinic/bayport-vet-clinic/bayport-backend`
+2. **Root Directory:** `bayport-vet-clinic/bayport-backend`
 3. **Runtime:** Docker
 4. **Instance type:** Free
 5. Add environment variables:
@@ -114,7 +114,7 @@ SPRING_WEB_CORS_ALLOWED_ORIGINS=https://YOUR-SITE.netlify.app
 
 | Problem | Fix |
 |---------|-----|
-| Render build fails | Check logs; ensure root dir is `bayport-vet-clinic/bayport-vet-clinic/bayport-backend` |
+| Render build fails | Check logs; ensure root dir is `bayport-vet-clinic/bayport-backend` |
 | `/api/health` timeout | Free tier sleeping — wait 60s and retry |
 | Database connection error | Verify Supabase password; try Supabase **Connect → Session pooler** JDBC if direct host fails |
 | Netlify “Set BAYPORT_API_BASE” | Add env var on Netlify, redeploy |

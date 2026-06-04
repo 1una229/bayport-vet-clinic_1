@@ -1,8 +1,8 @@
-# Monorepo: static UI is bayport-vet-clinic/bayport-vet-clinic/ (index.html, assets/, …)
+# Monorepo: static UI is bayport-vet-clinic/ (index.html, assets/, …)
 # Netlify site env → BAYPORT_API_BASE=https://YOUR-APP.onrender.com/api
 
 [build]
-  base = "bayport-vet-clinic/bayport-vet-clinic"
+  base = "bayport-vet-clinic"
   command = "node scripts/write-deploy-env.js"
   publish = "."
 

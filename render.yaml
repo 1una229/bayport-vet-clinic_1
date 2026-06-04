@@ -7,7 +7,7 @@ services:
     name: bayport-api
     runtime: docker
     plan: free
-    rootDir: bayport-vet-clinic/bayport-vet-clinic/bayport-backend
+    rootDir: bayport-vet-clinic/bayport-backend
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
