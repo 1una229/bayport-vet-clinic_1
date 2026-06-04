@@ -44,8 +44,8 @@
 
 ```
 SPRING_PROFILES_ACTIVE=freecloud
-SPRING_DATASOURCE_URL=jdbc:postgresql://db.gmyoopqvqvpybloqsdix.supabase.co:5432/postgres?sslmode=require
-SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_URL=jdbc:postgresql://aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+SPRING_DATASOURCE_USERNAME=postgres.gmyoopqvqvpybloqsdix
 SPRING_DATASOURCE_PASSWORD=<your-supabase-password>
 JWT_SECRET=<long-random-string>
 SPRING_MAIL_USERNAME=bayportveterinaryclinic@gmail.com
@@ -116,7 +116,8 @@ SPRING_WEB_CORS_ALLOWED_ORIGINS=https://YOUR-SITE.netlify.app
 |---------|-----|
 | Render build fails | Check logs; ensure root dir is `bayport-vet-clinic/bayport-backend` |
 | `/api/health` timeout | Free tier sleeping — wait 60s and retry |
-| Database connection error | Verify Supabase password; try Supabase **Connect → Session pooler** JDBC if direct host fails |
+| Render “Exited with status 1” | Open **Logs** → look for database error; use Session pooler URL + `postgres.gmyoopqvqvpybloqsdix` username; set `SPRING_DATASOURCE_PASSWORD` |
+| Database connection error | Verify Supabase password; use **Connect → Session pooler** (not direct `db.*` host — Render is IPv4-only) |
 | Netlify “Set BAYPORT_API_BASE” | Add env var on Netlify, redeploy |
 | CORS error on login | `SPRING_WEB_CORS_ALLOWED_ORIGINS` must match Netlify URL exactly (https, no trailing `/`) |
 | Red “backend” banner | Wrong `BAYPORT_API_BASE` or Render not running |

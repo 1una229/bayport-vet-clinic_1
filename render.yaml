@@ -13,10 +13,11 @@ services:
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: freecloud
+      # Render is IPv4-only; Supabase direct db.* host is IPv6 — use Session pooler (Supabase → Connect → Session).
       - key: SPRING_DATASOURCE_URL
-        value: jdbc:postgresql://db.gmyoopqvqvpybloqsdix.supabase.co:5432/postgres?sslmode=require
+        value: jdbc:postgresql://aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require
       - key: SPRING_DATASOURCE_USERNAME
-        value: postgres
+        value: postgres.gmyoopqvqvpybloqsdix
       - key: SPRING_DATASOURCE_PASSWORD
         sync: false
       - key: JWT_SECRET
@@ -30,4 +31,4 @@ services:
       - key: SPRING_MAIL_PASSWORD
         sync: false
       - key: SPRING_WEB_CORS_ALLOWED_ORIGINS
-        sync: false
+        value: https://adorable-daifuku-3966e7.netlify.app
