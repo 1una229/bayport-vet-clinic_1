@@ -673,8 +673,10 @@ public class ApiControllers {
         body.put("status", "UP");
         body.put("timestamp", java.time.Instant.now().toString());
         body.put("mailConfigured", emailService.isConfigured());
-        body.put("mailHost", "smtp.gmail.com");
-        body.put("mailPort", System.getenv().getOrDefault("SPRING_MAIL_PORT", "465"));
+        body.put("emailProvider", emailService.describeProvider());
+        body.put("renderSmtpBlocked", true);
+        body.put("mailHost", emailService.usesResend() ? "api.resend.com" : "smtp.gmail.com");
+        body.put("mailPort", emailService.usesResend() ? "443" : System.getenv().getOrDefault("SPRING_MAIL_PORT", "465"));
         body.put("schedulingEnabled", true);
         return ResponseEntity.ok(body);
     }

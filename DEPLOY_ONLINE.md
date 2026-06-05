@@ -85,16 +85,21 @@ SPRING_MAIL_PORT=587
 
 > **Note:** Free Render services sleep after ~15 min idle. First request may take 30–60 seconds to wake up.
 
-### Email (required for OTP & reminders)
+### Email (required for OTP & reminders) — **Resend, not Gmail SMTP**
 
-In Render **Environment**, you **must** set:
+Render **FREE tier blocks SMTP** (ports 465/587). Gmail will always time out. Use **Resend** (HTTPS, free tier):
+
+1. [resend.com](https://resend.com) → sign up → **API Keys** → Create → copy key (`re_…`)
+2. Render → **bayport-api** → **Environment**:
 
 | Key | Value |
 |-----|--------|
-| `SPRING_MAIL_USERNAME` | `bayportveterinaryclinic@gmail.com` |
-| `SPRING_MAIL_PASSWORD` | **Gmail App Password** (16 chars, from [Google App Passwords](https://myaccount.google.com/apppasswords)) — not your normal Gmail login password |
+| `RESEND_API_KEY` | your Resend API key |
+| `RESEND_FROM` | `Bayport Veterinary Clinic <onboarding@resend.dev>` *(default; verify your domain later for custom from)* |
 
-After saving, redeploy. Check: `https://bayport-api.onrender.com/api/health` → `"mailConfigured":true`.
+3. Save → redeploy. Check: `https://bayport-api.onrender.com/api/health` → `"mailConfigured":true`, `"emailProvider":"resend"`
+
+> Gmail `SPRING_MAIL_*` vars are optional on cloud and **will not work** on Render free.
 
 ---
 

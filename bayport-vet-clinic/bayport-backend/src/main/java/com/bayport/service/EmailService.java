@@ -24,30 +24,59 @@ import java.util.Base64;
 public class EmailService {
 
     private final JavaMailSender mailSender;
+    private final ResendEmailClient resend;
     private final String mailUsername;
     private final String mailPassword;
+    private final boolean cloudPreferResend;
     private String logoBase64 = null;
 
     @Autowired(required = false)
     public EmailService(
             JavaMailSender mailSender,
+            ResendEmailClient resend,
             @Value("${spring.mail.username:}") String mailUsername,
-            @Value("${spring.mail.password:}") String mailPassword) {
+            @Value("${spring.mail.password:}") String mailPassword,
+            @Value("${bayport.email.cloud-prefer-resend:true}") boolean cloudPreferResend) {
         this.mailSender = mailSender;
+        this.resend = resend;
         this.mailUsername = mailUsername == null ? "" : mailUsername.trim();
         this.mailPassword = mailPassword == null ? "" : mailPassword.trim();
-        if (!isConfigured()) {
-            log.warn("Email (SMTP) is not fully configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD "
-                    + "(Gmail app password) on Render, then redeploy.");
+        this.cloudPreferResend = cloudPreferResend;
+        loadLogo();
+        if (usesResend()) {
+            log.info("Email via Resend API (from={})", resend.getFrom());
+        } else if (isSmtpConfigured()) {
+            log.info("Email via SMTP for sender: {}", mailUsername);
+        } else if (cloudPreferResend) {
+            log.warn(
+                    "Email not configured for cloud: Render FREE tier blocks SMTP. "
+                            + "Sign up at https://resend.com → API Keys → set RESEND_API_KEY in Render Environment.");
         } else {
-            loadLogo();
-            log.info("Email (SMTP) configured for sender: {}", mailUsername);
+            log.warn("Email (SMTP) not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD.");
         }
     }
 
-    /** True when JavaMailSender, Gmail user, and app password are all set. */
-    public boolean isConfigured() {
+    public boolean usesResend() {
+        return resend != null && resend.isEnabled();
+    }
+
+    private boolean isSmtpConfigured() {
         return mailSender != null && !mailUsername.isEmpty() && !mailPassword.isEmpty();
+    }
+
+    /** True when Resend API key is set, or SMTP is fully configured (local / paid Render). */
+    public boolean isConfigured() {
+        return usesResend() || isSmtpConfigured();
+    }
+
+    public String describeProvider() {
+        if (usesResend()) {
+            return "resend";
+        }
+        if (isSmtpConfigured()) {
+            return "smtp";
+        }
+        return "none";
     }
 
     /**
@@ -191,18 +220,34 @@ public class EmailService {
 
     /** Generic email sender - now sends HTML emails */
     public void sendEmail(String to, String subject, String message) {
-        if (!isConfigured()) {
-            log.warn("Email not sent to {}: SMTP not configured. Subject: {}", to, subject);
-            throw new RuntimeException(
-                    "Email is not configured. Set SPRING_MAIL_USERNAME and SPRING_MAIL_PASSWORD "
-                            + "(use a Gmail app password) and restart the application.");
-        }
-        
         if (to == null || to.trim().isEmpty()) {
             log.warn("Email not sent: recipient address is empty. Subject: {}", subject);
             throw new RuntimeException("Recipient email address is required");
         }
-        
+
+        String htmlContent = formatMessageAsHtml(message, subject);
+
+        if (usesResend()) {
+            resend.sendHtmlEmail(to, subject, htmlContent);
+            return;
+        }
+
+        if (!isSmtpConfigured()) {
+            if (cloudPreferResend) {
+                throw new RuntimeException(
+                        "Email is not configured for cloud hosting. Render FREE tier blocks Gmail SMTP (ports 465/587). "
+                                + "Create a free API key at https://resend.com and set RESEND_API_KEY in Render → Environment, then redeploy.");
+            }
+            throw new RuntimeException(
+                    "Email is not configured. Set RESEND_API_KEY (cloud) or SPRING_MAIL_USERNAME + SPRING_MAIL_PASSWORD (local).");
+        }
+
+        if (cloudPreferResend) {
+            throw new RuntimeException(
+                    "Gmail SMTP cannot be used on Render FREE tier (connection times out). "
+                            + "Set RESEND_API_KEY from https://resend.com in Render Environment instead.");
+        }
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -214,10 +259,7 @@ public class EmailService {
                 helper.setFrom(mailUsername);
             }
             helper.setSubject(subject);
-            
-            // Convert message to HTML and add footer
-            String htmlContent = formatMessageAsHtml(message, subject);
-            helper.setText(htmlContent, true); // true = HTML content
+            helper.setText(htmlContent, true);
             
             mailSender.send(mimeMessage);
             log.info("Email sent successfully to: {}, Subject: {}", to, subject);
@@ -254,11 +296,12 @@ public class EmailService {
                    "Make sure you're using an app-specific password (not your regular Gmail password). " +
                    "Generate one at: https://myaccount.google.com/apppasswords";
         }
-        if (lowerMsg.contains("connection") || lowerMsg.contains("could not connect")) {
-            return "Cannot connect to email server. Please check your internet connection and SMTP settings.";
+        if (lowerMsg.contains("connection") || lowerMsg.contains("could not connect") || lowerMsg.contains("timed out")) {
+            return "Cannot reach Gmail SMTP from this server. On Render FREE tier, SMTP is blocked — use Resend: "
+                    + "sign up at https://resend.com, add RESEND_API_KEY in Render Environment, redeploy.";
         }
         if (lowerMsg.contains("timeout")) {
-            return "Email server connection timed out. Please try again later.";
+            return "Email server connection timed out. On Render FREE tier use Resend (RESEND_API_KEY) instead of Gmail SMTP.";
         }
         if (lowerMsg.contains("invalid address") || lowerMsg.contains("invalid recipient")) {
             return "Invalid email address. Please check the recipient email.";
