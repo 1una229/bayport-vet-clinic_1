@@ -101,6 +101,17 @@ Render **FREE tier blocks SMTP** (ports 465/587). Gmail will always time out. Us
 
 > Gmail `SPRING_MAIL_*` vars are optional on cloud and **will not work** on Render free.
 
+### Sender profile picture (logo circle next to “Bayport Veterinary Clinic”)
+
+That icon is **not** set in the email HTML. Paw Care shows a logo because they send from **Gmail with a profile photo** on that Google account.
+
+| Setup | How to get the inbox logo |
+|--------|---------------------------|
+| **Quick (local / Gmail SMTP)** | [Google Account](https://myaccount.google.com/personal-info) → upload Bayport logo for `bayportveterinaryclinic@gmail.com` → send from that address |
+| **Online (Render + Resend)** | Verify **your own domain** in Resend, set `RESEND_FROM` to e.g. `reminders@mail.yourdomain.com`, then add **BIMI** DNS (see `docs/EMAIL_SENDER_AVATAR.md` and `assets/bimi-logo.svg` on Netlify) |
+
+`onboarding@resend.dev` cannot use your clinic logo as the sender avatar.
+
 ---
 
 ## STEP 3 — Netlify (website)
