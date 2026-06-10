@@ -2,6 +2,7 @@ window.USE_API = window.USE_API ?? true;
 
 const API_BASE_STORAGE_KEY = "bayport_api_base";
 const LOCAL_API_DEFAULT = "http://localhost:8080/api";
+const PRODUCTION_API_DEFAULT = "https://bayport-api.onrender.com/api";
 const INVALID_API_BASE_PATTERNS = [
   /<[^>]*>/,
   /your-azure-app/i,
@@ -93,22 +94,42 @@ window.resolveApiBase = function resolveApiBase() {
   const localDefault = defaultLocalApiBase();
   if (localDefault) return localDefault;
 
+  if (typeof window !== "undefined") {
+    const pageHost = (window.location.hostname || "").toLowerCase();
+    if (pageHost.includes("netlify.app") || pageHost.includes("vercel.app")) {
+      return PRODUCTION_API_DEFAULT;
+    }
+  }
+
   return "";
 };
 window.API_BASE = window.resolveApiBase();
 const API_TIMEOUT_LOCAL = 12000;
-const API_TIMEOUT_CLOUD = 120000;
+const API_TIMEOUT_CLOUD = 180000;
 const API_DISABLED_ERR = "Backend integration is required. Please keep USE_API=true so the server endpoints remain reachable.";
+
+window.isHostedProductionSite = function isHostedProductionSite() {
+  try {
+    const h = (window.location.hostname || "").toLowerCase();
+    if (h.includes("netlify.app") || h.includes("vercel.app") || h.includes("onrender.com")) {
+      return true;
+    }
+  } catch (_) {}
+  return window.isCloudApiHost && window.isCloudApiHost();
+};
 
 window.isCloudApiHost = function isCloudApiHost(base) {
   const b = String(base || window.resolveApiBase() || "").toLowerCase();
-  return (
+  if (
     b.includes("onrender.com") ||
     b.includes("netlify.app") ||
     b.includes("koyeb.app") ||
     b.includes("railway.app") ||
     b.includes("vercel.app")
-  );
+  ) {
+    return true;
+  }
+  return window.isHostedProductionSite && window.isHostedProductionSite();
 };
 
 window.getApiTimeout = function getApiTimeout() {
@@ -870,7 +891,7 @@ window.fileToDataURL = function fileToDataURL(file) {
 /** Wake Render free tier before user clicks (reduces first-action delay). */
 (function setupBackendWarmup() {
   function warmBackend() {
-    if (!window.isCloudApiHost || !window.isCloudApiHost()) return;
+    if (!window.isHostedProductionSite || !window.isHostedProductionSite()) return;
     try {
       const url = window.buildApiUrl("/health");
       const ctrl = new AbortController();
@@ -887,8 +908,8 @@ window.fileToDataURL = function fileToDataURL(file) {
   window.warmBackend = warmBackend;
 
   /** Wait for Render cold start (retry /health until up or timeout). */
-  window.ensureBackendReady = async function ensureBackendReady(maxWaitMs = 120000) {
-    if (!window.isCloudApiHost || !window.isCloudApiHost()) return true;
+  window.ensureBackendReady = async function ensureBackendReady(maxWaitMs = 180000) {
+    if (!window.isHostedProductionSite || !window.isHostedProductionSite()) return true;
     if (window.__bayportBackendReady) return true;
     const started = Date.now();
     while (Date.now() - started < maxWaitMs) {

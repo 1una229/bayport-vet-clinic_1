@@ -6,7 +6,26 @@ window.tryLogin = async function(username, password, role, otp) {
   if (!role) return { ok: false, msg: "Please select a role first." };
   ensureApiEnabled();
   try {
-    const payload = await Api.auth.login(username, password, otp);
+    let payload = null;
+    let lastErr = null;
+    const attempts = window.isHostedProductionSite && window.isHostedProductionSite() ? 3 : 1;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        if (i > 0 && typeof window.ensureBackendReady === "function") {
+          await window.ensureBackendReady(90000);
+        }
+        payload = await Api.auth.login(username, password, otp);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        const msg = String(err?.message || "");
+        const retryable = msg.includes("timeout") || msg.includes("Abort") || msg.includes("Cannot connect");
+        if (!retryable || i >= attempts - 1) throw err;
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
+    if (!payload && lastErr) throw lastErr;
     if (payload.status === "MFA_REQUIRED") {
       return {
         ok: false,
@@ -52,7 +71,9 @@ window.tryLogin = async function(username, password, role, otp) {
     const raw = err.message || "Unable to reach the server.";
     let msg = raw;
     if (raw.includes("Failed to fetch") || raw.includes("Cannot connect to backend")) {
-      msg = "Cannot connect to backend server. Please ensure the application is running and the backend server has started.";
+      msg = "Cannot connect to backend server. The server may still be starting — wait a moment and try again.";
+    } else if (raw.includes("timeout") || raw.includes("Abort")) {
+      msg = "Server is still starting (Render free tier). Wait 30 seconds and click Log In again.";
     } else if (raw.includes("401") && raw.length < 80) {
       msg = "Invalid username or password.";
     }

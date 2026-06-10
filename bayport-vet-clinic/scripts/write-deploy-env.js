@@ -31,7 +31,13 @@ function isValidApiBase(url) {
 }
 
 const raw = process.env.BAYPORT_API_BASE || "";
-const base = isValidApiBase(raw) ? normalizeApiBase(raw) : "";
+const DEFAULT_PRODUCTION_API = "https://bayport-api.onrender.com/api";
+let base = isValidApiBase(raw) ? normalizeApiBase(raw) : "";
+
+if (!base && process.env.NETLIFY === "true") {
+  base = DEFAULT_PRODUCTION_API;
+  console.warn("[write-deploy-env] BAYPORT_API_BASE not set — using default:", base);
+}
 
 if (process.env.NETLIFY === "true" && !base) {
   console.error(

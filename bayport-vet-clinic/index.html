@@ -120,7 +120,7 @@
   <script>
     (function loginWarmupBanner() {
       const banner = document.getElementById("warmupBanner");
-      if (!banner || !window.isCloudApiHost || !window.isCloudApiHost()) return;
+      if (!banner || !window.isHostedProductionSite || !window.isHostedProductionSite()) return;
       banner.classList.remove("hidden");
       const hide = () => banner.classList.add("hidden");
       if (window.__bayportBackendReady) hide();
@@ -187,9 +187,9 @@
       loginBtn.textContent = 'Signing in...';
       errorBox.classList.add('hidden');
 
-      if (window.isCloudApiHost && window.isCloudApiHost() && typeof window.ensureBackendReady === 'function') {
+      if (window.isHostedProductionSite && window.isHostedProductionSite() && typeof window.ensureBackendReady === 'function') {
         loginBtn.textContent = 'Starting server…';
-        const ready = await window.ensureBackendReady(120000);
+        const ready = await window.ensureBackendReady(180000);
         if (!ready) {
           loginBtn.disabled = false;
           loginBtn.textContent = originalText;
