@@ -33,7 +33,34 @@ window.normalizeApiBase = function normalizeApiBase(url) {
   return base;
 };
 
+function getSameOriginApiBase() {
+  try {
+    return `${window.location.origin.replace(/\/+$/, "")}/api`;
+  } catch (_) {
+    return "";
+  }
+}
+
+window.isStaticHostedSite = function isStaticHostedSite() {
+  if (window.BAYPORT_USE_SAME_ORIGIN_API) return true;
+  try {
+    const h = (window.location.hostname || "").toLowerCase();
+    if (h.includes("netlify.app") || h.includes("vercel.app")) return true;
+  } catch (_) {}
+  return false;
+};
+
 function readStoredApiBase() {
+  if (window.isStaticHostedSite && window.isStaticHostedSite()) {
+    const sameOrigin = getSameOriginApiBase();
+    if (sameOrigin) {
+      try {
+        localStorage.setItem(API_BASE_STORAGE_KEY, sameOrigin);
+      } catch (_) {}
+      return sameOrigin;
+    }
+  }
+
   const fromDeploy = (window.BAYPORT_API_BASE || "").trim();
   const fromStorage = (localStorage.getItem(API_BASE_STORAGE_KEY) || "").trim();
   let raw = fromDeploy || fromStorage;
@@ -44,7 +71,7 @@ function readStoredApiBase() {
     const pageHost = (window.location.hostname || "").toLowerCase();
     if (pageHost.includes("netlify.app") || pageHost.includes("vercel.app")) {
       const normalized = window.normalizeApiBase(raw);
-      if (!normalized.includes("onrender.com")) {
+      if (!normalized.includes("onrender.com") && !normalized.includes("/api")) {
         if (fromDeploy && window.isValidApiBase(fromDeploy)) {
           return window.normalizeApiBase(fromDeploy);
         }
@@ -112,6 +139,10 @@ window.resolveApiBase = function resolveApiBase() {
   if (localDefault) return localDefault;
 
   if (typeof window !== "undefined") {
+    if (window.isStaticHostedSite && window.isStaticHostedSite()) {
+      const sameOrigin = getSameOriginApiBase();
+      if (sameOrigin) return sameOrigin;
+    }
     const pageHost = (window.location.hostname || "").toLowerCase();
     if (pageHost.includes("netlify.app") || pageHost.includes("vercel.app")) {
       return PRODUCTION_API_DEFAULT;
@@ -126,6 +157,7 @@ const API_TIMEOUT_CLOUD = 240000;
 const API_DISABLED_ERR = "Backend integration is required. Please keep USE_API=true so the server endpoints remain reachable.";
 
 window.isHostedProductionSite = function isHostedProductionSite() {
+  if (window.isStaticHostedSite && window.isStaticHostedSite()) return true;
   try {
     const h = (window.location.hostname || "").toLowerCase();
     if (h.includes("netlify.app") || h.includes("vercel.app") || h.includes("onrender.com")) {
@@ -140,11 +172,18 @@ window.isCloudApiHost = function isCloudApiHost(base) {
   if (
     b.includes("onrender.com") ||
     b.includes("netlify.app") ||
+    b.includes("/.netlify/functions/") ||
     b.includes("koyeb.app") ||
     b.includes("railway.app") ||
     b.includes("vercel.app")
   ) {
     return true;
+  }
+  if (window.isStaticHostedSite && window.isStaticHostedSite()) {
+    try {
+      const sameOrigin = `${window.location.origin.replace(/\/+$/, "")}/api`.toLowerCase();
+      if (b === sameOrigin) return true;
+    } catch (_) {}
   }
   return window.isHostedProductionSite && window.isHostedProductionSite();
 };
@@ -196,6 +235,7 @@ function buildApiUrl(path) {
   window.API_BASE = base;
   return base + p;
 }
+window.buildApiUrl = buildApiUrl;
 
 window.ApiHttp = async function apiHttp(
   path,
@@ -910,7 +950,7 @@ window.fileToDataURL = function fileToDataURL(file) {
   function warmBackend() {
     if (!window.isHostedProductionSite || !window.isHostedProductionSite()) return;
     try {
-      const url = window.buildApiUrl("/health");
+      const url = buildApiUrl("/health");
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), API_TIMEOUT_CLOUD);
       fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal })

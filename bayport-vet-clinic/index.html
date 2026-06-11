@@ -114,10 +114,10 @@
     Waking up server… first visit may take up to a minute on free hosting.
   </div>
 
-  <script src="assets/deploy-env.js?v=20260612"></script>
+  <script src="assets/deploy-env.js?v=20260613"></script>
 <script>window.USE_API=true;</script>
-  <script src="assets/api.js?v=20260612"></script>
-  <script src="assets/app.js?v=20260612"></script>
+  <script src="assets/api.js?v=20260613"></script>
+  <script src="assets/app.js?v=20260613"></script>
   <script>
     (function loginWarmupBanner() {
       const banner = document.getElementById("warmupBanner");
@@ -125,17 +125,24 @@
       const loginBtn = document.getElementById("loginBtn");
       const errorBox = document.getElementById("errorBox");
 
+      if (window.BAYPORT_USE_SAME_ORIGIN_API || (window.isStaticHostedSite && window.isStaticHostedSite())) {
+        try {
+          const base = window.location.origin.replace(/\/+$/, "") + "/api";
+          localStorage.setItem("bayport_api_base", base);
+          window.BAYPORT_API_BASE = base;
+          window.API_BASE = base;
+        } catch (_) {}
+      } else if (window.BAYPORT_API_BASE && window.isValidApiBase(window.BAYPORT_API_BASE)) {
+        try {
+          localStorage.setItem("bayport_api_base", window.normalizeApiBase(window.BAYPORT_API_BASE));
+        } catch (_) {}
+      }
+
       // Default role — set after listeners are wired below.
       window.__bayportSelectDefaultRole = function () {
         const adminBtn = document.querySelector('.role-btn[data-role="admin"]');
         if (adminBtn) adminBtn.click();
       };
-
-      if (window.BAYPORT_API_BASE && window.isValidApiBase(window.BAYPORT_API_BASE)) {
-        try {
-          localStorage.setItem("bayport_api_base", window.normalizeApiBase(window.BAYPORT_API_BASE));
-        } catch (_) {}
-      }
 
       window.onBackendWarmupProgress = function (attempt, seconds) {
         if (statusBox) {
