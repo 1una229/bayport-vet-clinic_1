@@ -72,6 +72,7 @@
         </div>
 
         <div id="errorBox" class="hidden mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm"></div>
+        <div id="serverStatusBox" class="hidden mb-4 p-3 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-sm"></div>
 
         <div id="otpSection" class="hidden mb-4">
           <label class="text-sm text-gray-600">Enter OTP Code (4 digits)</label>
@@ -113,28 +114,70 @@
     Waking up server… first visit may take up to a minute on free hosting.
   </div>
 
-  <script src="assets/deploy-env.js"></script>
+  <script src="assets/deploy-env.js?v=20260612"></script>
 <script>window.USE_API=true;</script>
-  <script src="assets/api.js"></script>
-  <script src="assets/app.js"></script>
+  <script src="assets/api.js?v=20260612"></script>
+  <script src="assets/app.js?v=20260612"></script>
   <script>
     (function loginWarmupBanner() {
       const banner = document.getElementById("warmupBanner");
-      if (!banner || !window.isHostedProductionSite || !window.isHostedProductionSite()) return;
-      banner.classList.remove("hidden");
-      const hide = () => banner.classList.add("hidden");
-      if (window.__bayportBackendReady) hide();
-      const poll = setInterval(() => {
-        if (window.__bayportBackendReady) {
-          clearInterval(poll);
-          hide();
+      const statusBox = document.getElementById("serverStatusBox");
+      const loginBtn = document.getElementById("loginBtn");
+      const errorBox = document.getElementById("errorBox");
+
+      // Default role — set after listeners are wired below.
+      window.__bayportSelectDefaultRole = function () {
+        const adminBtn = document.querySelector('.role-btn[data-role="admin"]');
+        if (adminBtn) adminBtn.click();
+      };
+
+      if (window.BAYPORT_API_BASE && window.isValidApiBase(window.BAYPORT_API_BASE)) {
+        try {
+          localStorage.setItem("bayport_api_base", window.normalizeApiBase(window.BAYPORT_API_BASE));
+        } catch (_) {}
+      }
+
+      window.onBackendWarmupProgress = function (attempt, seconds) {
+        if (statusBox) {
+          statusBox.classList.remove("hidden");
+          statusBox.textContent = "Connecting to server… (" + seconds + "s). Render free tier may take up to 2 minutes on first load.";
         }
-      }, 500);
-      setTimeout(() => {
-        clearInterval(poll);
-        hide();
-      }, 95000);
+        if (loginBtn) {
+          loginBtn.disabled = true;
+          loginBtn.textContent = "Starting server…";
+        }
+      };
+
+      async function warmOnLoad() {
+        if (!window.isHostedProductionSite || !window.isHostedProductionSite()) return;
+        if (banner) banner.classList.remove("hidden");
+        if (statusBox) statusBox.classList.remove("hidden");
+        window.onBackendWarmupProgress(1, 0);
+        const ready = await window.ensureBackendReady(240000);
+        if (banner) banner.classList.add("hidden");
+        if (ready) {
+          if (statusBox) {
+            statusBox.textContent = "Server ready. You can sign in now.";
+            statusBox.classList.remove("hidden");
+          }
+          if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = "Log In";
+          }
+        } else {
+          if (statusBox) {
+            statusBox.className = "mb-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-sm";
+            statusBox.textContent = "Server is still starting. Wait a moment, then click Log In again.";
+          }
+          if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = "Log In";
+          }
+        }
+      }
+
       if (typeof window.warmBackend === "function") window.warmBackend();
+      warmOnLoad();
     })();
 
     // UI wiring for role selection and login
@@ -153,6 +196,7 @@
         errorBox.classList.add('hidden');
       });
     });
+    if (typeof window.__bayportSelectDefaultRole === 'function') window.__bayportSelectDefaultRole();
 
     togglePw.addEventListener('click', ()=>{
       const p = document.getElementById('password');
@@ -188,16 +232,18 @@
       errorBox.classList.add('hidden');
 
       if (window.isHostedProductionSite && window.isHostedProductionSite() && typeof window.ensureBackendReady === 'function') {
-        loginBtn.textContent = 'Starting server…';
-        const ready = await window.ensureBackendReady(180000);
-        if (!ready) {
-          loginBtn.disabled = false;
-          loginBtn.textContent = originalText;
-          errorBox.textContent = 'Server is still waking up (Render free tier). Wait 30 seconds and click Log In again.';
-          errorBox.classList.remove('hidden');
-          errorBox.classList.remove('bg-blue-50', 'border-blue-200', 'text-blue-700');
-          errorBox.classList.add('bg-red-50', 'border-red-200', 'text-red-700');
-          return;
+        if (!window.__bayportBackendReady) {
+          loginBtn.textContent = 'Starting server…';
+          const ready = await window.ensureBackendReady(240000);
+          if (!ready) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = originalText;
+            errorBox.textContent = 'Server is still waking up. Wait 30 seconds and click Log In again.';
+            errorBox.classList.remove('hidden');
+            errorBox.classList.remove('bg-blue-50', 'border-blue-200', 'text-blue-700');
+            errorBox.classList.add('bg-red-50', 'border-red-200', 'text-red-700');
+            return;
+          }
         }
         loginBtn.textContent = 'Signing in...';
       }

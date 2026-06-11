@@ -67,8 +67,9 @@ public class AuthController {
                                      usernameLower.equals("frontdesk");
             
             // Check both the request username and the user's role
-            boolean isAdminRole = "admin".equalsIgnoreCase(user.getRole()) || 
-                                 user.getRoles().stream().anyMatch(r -> "ROLE_ADMIN".equalsIgnoreCase(r.getName()));
+            boolean isAdminRole = "admin".equalsIgnoreCase(user.getRole())
+                    || (user.getRoles() != null && user.getRoles().stream()
+                        .anyMatch(r -> "ROLE_ADMIN".equalsIgnoreCase(r.getName())));
             
             if (isDefaultAccount || isAdminRole) {
                 // Use Spring Security authentication for password verification

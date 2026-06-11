@@ -34,8 +34,25 @@ window.normalizeApiBase = function normalizeApiBase(url) {
 };
 
 function readStoredApiBase() {
-  const raw = (window.BAYPORT_API_BASE || localStorage.getItem(API_BASE_STORAGE_KEY) || "").trim();
+  const fromDeploy = (window.BAYPORT_API_BASE || "").trim();
+  const fromStorage = (localStorage.getItem(API_BASE_STORAGE_KEY) || "").trim();
+  let raw = fromDeploy || fromStorage;
   if (!raw) return "";
+
+  // On the hosted Netlify site, never use localhost or wrong stored URLs from dev sessions.
+  try {
+    const pageHost = (window.location.hostname || "").toLowerCase();
+    if (pageHost.includes("netlify.app") || pageHost.includes("vercel.app")) {
+      const normalized = window.normalizeApiBase(raw);
+      if (!normalized.includes("onrender.com")) {
+        if (fromDeploy && window.isValidApiBase(fromDeploy)) {
+          return window.normalizeApiBase(fromDeploy);
+        }
+        return PRODUCTION_API_DEFAULT;
+      }
+    }
+  } catch (_) {}
+
   if (!window.isValidApiBase(raw)) {
     try {
       localStorage.removeItem(API_BASE_STORAGE_KEY);
@@ -105,7 +122,7 @@ window.resolveApiBase = function resolveApiBase() {
 };
 window.API_BASE = window.resolveApiBase();
 const API_TIMEOUT_LOCAL = 12000;
-const API_TIMEOUT_CLOUD = 180000;
+const API_TIMEOUT_CLOUD = 240000;
 const API_DISABLED_ERR = "Backend integration is required. Please keep USE_API=true so the server endpoints remain reachable.";
 
 window.isHostedProductionSite = function isHostedProductionSite() {
@@ -312,12 +329,12 @@ window.Api = {
     login: (username, password, otp) => ApiHttp("/auth/login", {
       method: "POST",
       body: { username, password },
-      timeoutMs: 180000,
+      timeoutMs: 240000,
     }),
     verifyMfa: (username, code) => ApiHttp("/auth/mfa/verify", {
       method: "POST",
       body: { username, code },
-      timeoutMs: 180000,
+      timeoutMs: 240000,
     }),
   },
 
@@ -908,17 +925,22 @@ window.fileToDataURL = function fileToDataURL(file) {
   window.warmBackend = warmBackend;
 
   /** Wait for Render cold start (retry /health until up or timeout). */
-  window.ensureBackendReady = async function ensureBackendReady(maxWaitMs = 180000) {
+  window.ensureBackendReady = async function ensureBackendReady(maxWaitMs = 240000) {
     if (!window.isHostedProductionSite || !window.isHostedProductionSite()) return true;
     if (window.__bayportBackendReady) return true;
     const started = Date.now();
+    let attempt = 0;
     while (Date.now() - started < maxWaitMs) {
+      attempt++;
       try {
-        await ApiHttp("/health", { timeoutMs: 20000 });
+        if (typeof window.onBackendWarmupProgress === "function") {
+          window.onBackendWarmupProgress(attempt, Math.round((Date.now() - started) / 1000));
+        }
+        await ApiHttp("/health", { timeoutMs: 45000 });
         window.__bayportBackendReady = true;
         return true;
       } catch (_) {
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 2500));
       }
     }
     return false;
