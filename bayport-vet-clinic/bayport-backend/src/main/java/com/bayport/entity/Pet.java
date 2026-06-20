@@ -1,13 +1,16 @@
 package com.bayport.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import org.hibernate.Hibernate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @JsonIgnoreProperties(
@@ -90,7 +93,6 @@ public class Pet {
     @JoinColumn(name = "owner_id", insertable = false, updatable = false)
     private Owner ownerEntity;
 
-    @JsonManagedReference
     @OneToMany(mappedBy = "pet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Procedure> procedures = new ArrayList<>();
 
@@ -179,8 +181,46 @@ public class Pet {
     public Owner getOwnerEntity() { return ownerEntity; }
     public void setOwnerEntity(Owner ownerEntity) { this.ownerEntity = ownerEntity; }
 
-    public List<Procedure> getProcedures() { return procedures; }
-    public void setProcedures(List<Procedure> procedures) { this.procedures = procedures; }
+    /** Internal / service use — not serialized directly (see {@link #getProceduresForJson}). */
+    @JsonIgnore
+    public List<Procedure> getProcedures() {
+        ensureProceduresList();
+        return procedures;
+    }
+
+    /** JSON read-only; avoids lazy-load on list endpoints. Full detail after explicit init in service. */
+    @JsonProperty(value = "procedures", access = JsonProperty.Access.READ_ONLY)
+    public List<Procedure> getProceduresForJson() {
+        if (procedures == null || !Hibernate.isInitialized(procedures)) {
+            return Collections.emptyList();
+        }
+        return procedures;
+    }
+
+    /**
+     * Never replace the Hibernate-managed collection instance (orphanRemoval).
+     * Pet updates from the API must not pass procedures — use procedure endpoints instead.
+     */
+    @JsonIgnore
+    public void setProcedures(List<Procedure> incoming) {
+        ensureProceduresList();
+        if (incoming == null || incoming.isEmpty() || this.id != null) {
+            return;
+        }
+        this.procedures.clear();
+        this.procedures.addAll(incoming);
+        for (Procedure procedure : this.procedures) {
+            if (procedure != null) {
+                procedure.setPet(this);
+            }
+        }
+    }
+
+    private void ensureProceduresList() {
+        if (this.procedures == null) {
+            this.procedures = new ArrayList<>();
+        }
+    }
 
     // Soft delete getters and setters
     public Boolean getDeleted() { return deleted != null ? deleted : false; }

@@ -116,7 +116,6 @@ public class ApiControllers {
 
     @PostMapping("/pets")
     public Pet createPet(@RequestBody Pet p){
-        if (p.getProcedures() == null) p.setProcedures(new ArrayList<>());
         return bayportService.savePet(p);
     }
 
@@ -129,12 +128,6 @@ public class ApiControllers {
             return ResponseEntity.notFound().build();
         }
 
-        // Make sure procedures list is never null
-        if (pet.getProcedures() == null) {
-            pet.setProcedures(new ArrayList<>());
-        }
-
-        // Delegate to the service and return the updated pet
         return ResponseEntity.ok(bayportService.updatePet(id, pet));
     }
 

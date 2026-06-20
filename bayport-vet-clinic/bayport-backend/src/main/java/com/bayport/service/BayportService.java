@@ -113,14 +113,8 @@ public class BayportService {
                 pet.setOwner(ownerNames.get(pet.getOwnerId()));
             }
             if (includeProcedures) {
-                if (pet.getProcedures() != null) {
-                    pet.getProcedures().size();
-                } else {
-                    pet.setProcedures(new ArrayList<>());
-                }
+                pet.getProcedures().size();
                 backfillLastVaccinationFromProcedures(pet);
-            } else {
-                pet.setProcedures(new ArrayList<>());
             }
         }
         return pets;
@@ -140,11 +134,7 @@ public class BayportService {
     public Optional<Pet> getPetById(Long id) {
         // Use soft delete - only get non-deleted pets
         return petRepository.findByIdAndDeletedFalse(id).map(pet -> {
-            if (pet.getProcedures() != null) {
-                pet.getProcedures().size();
-            } else {
-                pet.setProcedures(new ArrayList<>());
-            }
+            pet.getProcedures().size();
             backfillLastVaccinationFromProcedures(pet);
             return pet;
         });
@@ -158,16 +148,47 @@ public class BayportService {
         return savedPet;
     }
 
-    public Pet updatePet(Long id, Pet pet) {
-        if (!petRepository.existsById(id)) {
+    public Pet updatePet(Long id, Pet incoming) {
+        Pet existing = petRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pet not found with id: " + id));
+        if (Boolean.TRUE.equals(existing.getDeleted())) {
             throw new ResourceNotFoundException("Pet not found with id: " + id);
         }
-        pet.setId(id);
-        validatePet(pet);
-        syncOwnerName(pet);
-        Pet updatedPet = petRepository.save(pet);
+        applyPetScalars(existing, incoming);
+        validatePet(existing);
+        syncOwnerName(existing);
+        Pet updatedPet = petRepository.save(existing);
         logOperation("PET_UPDATED", "Updated pet " + updatedPet.getName(), updatedPet.getId());
         return updatedPet;
+    }
+
+    /** Copy editable pet fields only — never replace the {@code procedures} collection from API payloads. */
+    private void applyPetScalars(Pet target, Pet source) {
+        if (source == null) {
+            return;
+        }
+        target.setName(source.getName());
+        target.setSpecies(source.getSpecies());
+        target.setBreed(source.getBreed());
+        target.setGender(source.getGender());
+        target.setAge(source.getAge());
+        target.setAgeDisplay(source.getAgeDisplay());
+        target.setMicrochip(source.getMicrochip());
+        target.setColor(source.getColor());
+        target.setWeight(source.getWeight());
+        target.setDateOfBirth(source.getDateOfBirth());
+        target.setOwnerId(source.getOwnerId());
+        target.setAddress(source.getAddress());
+        target.setFederation(source.getFederation());
+        if (source.getPhoto() != null) {
+            target.setPhoto(source.getPhoto());
+        }
+        target.setAllergies(source.getAllergies());
+        target.setChronicConditions(source.getChronicConditions());
+        target.setKnownMedications(source.getKnownMedications());
+        target.setLastVaccinationDate(source.getLastVaccinationDate());
+        target.setLastVaccinationPlace(source.getLastVaccinationPlace());
+        target.setLastVaccinationVet(source.getLastVaccinationVet());
     }
 
     public void deletePet(Long id) {
@@ -221,9 +242,6 @@ public class BayportService {
     public Pet addProcedureToPet(Long petId, Procedure procedure) {
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pet not found with id: " + petId));
-        if (pet.getProcedures() == null) {
-            pet.setProcedures(new java.util.ArrayList<>());
-        }
 
         if (procedure.getPerformedAt() == null) {
             procedure.setPerformedAt(LocalDate.now());
@@ -272,6 +290,7 @@ public class BayportService {
             throw new IllegalStateException("Procedure does not belong to the specified pet");
         }
         Pet pet = existing.getPet();
+        pet.getProcedures().remove(existing);
         procedureRepository.delete(existing);
         vaccineReminderService.syncPetVaccineReminders(pet);
     }
