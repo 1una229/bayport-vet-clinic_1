@@ -438,11 +438,8 @@ public class PdfService {
         return s;
     }
 
-    /** Circled index (①②…) like the printed Rx pad; falls back to "1." beyond 20. */
+    /** Sequential index (1., 2., 3.) before each medication — standard Rx format. */
     private static String prescriptionBullet(int index) {
-        if (index >= 1 && index <= 20) {
-            return String.valueOf((char) (0x2460 + index - 1));
-        }
         return index + ".";
     }
 

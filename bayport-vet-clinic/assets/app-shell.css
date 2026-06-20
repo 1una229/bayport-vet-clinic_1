@@ -1,0 +1,82 @@
+/* Unified fixed sidebar shell — include via app.js on all authenticated pages */
+:root {
+  --soft-teal: #0057b8;
+  --bp-sidebar-w: 18rem;
+}
+
+body.bp-has-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.bp-shell {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.bp-app-sidebar {
+  width: var(--bp-sidebar-w);
+  min-width: var(--bp-sidebar-w);
+  max-width: var(--bp-sidebar-w);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: calc(100vh - var(--bp-header-h, 0px));
+  max-height: calc(100vh - var(--bp-header-h, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  padding: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  z-index: 20;
+}
+
+.bp-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.bp-app-sidebar h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--soft-teal);
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.bp-shell > main,
+.bp-shell > .flex-1 {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bp-app-sidebar button[data-sidebar-active="1"] {
+  background: var(--soft-teal);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.bp-app-sidebar button[data-sidebar-active="1"]:hover {
+  background: var(--soft-teal);
+  color: #fff;
+}
+
+@media (max-width: 767px) {
+  .bp-app-sidebar.bp-sidebar-mobile-hidden {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .bp-app-sidebar.bp-sidebar-mobile-hidden {
+    display: block;
+  }
+}

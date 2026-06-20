@@ -39,7 +39,15 @@ public class ResendEmailClient {
     }
 
     public boolean isEnabled() {
-        return !apiKey.isEmpty();
+        if (apiKey.isEmpty()) {
+            return false;
+        }
+        // Ignore Resend sandbox sender — it cannot reach pet owners; use Brevo/Netlify relay instead.
+        if (from.toLowerCase().contains("onboarding@resend.dev")) {
+            log.warn("RESEND_API_KEY is set but from={} is test-only — use Brevo (BREVO_API_KEY) or verify a custom domain on Resend.", from);
+            return false;
+        }
+        return true;
     }
 
     public String getFrom() {

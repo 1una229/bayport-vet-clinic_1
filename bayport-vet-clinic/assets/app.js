@@ -555,6 +555,46 @@ window.renderSidebar = function (container, role, activeFile) {
   container.querySelectorAll("details.sidebar-group").forEach((det) => {
     if (det.querySelector("button[data-sidebar-active='1']")) det.open = true;
   });
+
+  if (typeof window.normalizeAppSidebar === "function") {
+    window.normalizeAppSidebar(container);
+  }
+};
+
+(function injectAppShellAssets() {
+  if (typeof document === "undefined") return;
+  if (!document.getElementById("bp-app-shell-css")) {
+    const link = document.createElement("link");
+    link.id = "bp-app-shell-css";
+    link.rel = "stylesheet";
+    link.href = "assets/app-shell.css";
+    document.head.appendChild(link);
+  }
+  document.body?.classList.add("bp-has-shell");
+})();
+
+/** Fixed, consistent sidebar layout on every module page. */
+window.normalizeAppSidebar = function normalizeAppSidebar(navEl) {
+  if (!navEl) return;
+  const aside = navEl.closest("aside");
+  if (!aside || aside.id === "detailDrawer") return;
+  aside.classList.add("bp-app-sidebar");
+  aside.classList.remove("w-64", "w-72", "lg:w-72", "hidden", "md:block");
+  if (aside.classList.contains("bp-sidebar-mobile-hidden") || aside.dataset.mobileNav === "collapse") {
+    /* keep mobile collapse behavior */
+  } else if (window.matchMedia("(max-width: 767px)").matches) {
+    aside.classList.add("bp-sidebar-mobile-hidden");
+  }
+  navEl.classList.add("bp-sidebar-nav");
+  const shell = aside.parentElement;
+  if (shell && !shell.classList.contains("bp-shell")) {
+    shell.classList.add("bp-shell", "min-h-0", "min-w-0");
+  }
+  try {
+    const header = document.getElementById("bpAppHeader");
+    const h = header ? header.offsetHeight : 0;
+    document.documentElement.style.setProperty("--bp-header-h", h + "px");
+  } catch (_) {}
 };
 
 window.ROLE_COPY = ROLE_COPY;

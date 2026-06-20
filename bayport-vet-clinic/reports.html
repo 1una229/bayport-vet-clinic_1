@@ -69,7 +69,7 @@
             </div>
             <button type="button" id="runBtn" class="mt-5 lg:mt-6 px-5 py-2.5 rounded-lg bg-[var(--soft-teal)] text-white text-sm font-semibold hover:brightness-110 shadow-sm">Run</button>
             <button type="button" id="printBtn" class="mt-5 lg:mt-6 px-4 py-2.5 rounded-lg border-2 border-[var(--soft-teal)] text-[var(--soft-teal)] text-sm font-semibold hover:bg-blue-50">Print PDF</button>
-            <button type="button" id="excelBtn" class="mt-5 lg:mt-6 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50">Export Excel (CSV)</button>
+            <button type="button" id="excelBtn" class="mt-5 lg:mt-6 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50">Export Excel</button>
           </div>
         </div>
 
@@ -187,6 +187,7 @@
   <script src="assets/deploy-env.js"></script>
   <script>window.USE_API = true;</script>
   <script src="assets/api.js"></script>
+  <script src="assets/excel-export.js"></script>
   <script src="assets/app.js"></script>
   <script src="assets/app-header.js"></script>
   <script>
@@ -1001,23 +1002,49 @@
       const pending = pendingBillingTotal(billing, start, end);
       const top = aggregateTopItems(r);
 
-      const rows = [
-        ["Bayport Veterinary Clinic — reports export"],
-        ["Period", r.period || "", "From", r.from || "", "To", r.to || ""],
-        ["Total POS sales (range)", formatPrice(totalPos)],
-        ["Pending billing (range)", formatPrice(pending)],
-        [],
-        ["Top items", "Category", "Qty", "Total"],
-        ...top.map((x) => [x.name, x.cat, x.qty, formatPrice(x.total)]),
-        [],
-        ["Backend summary — POS procedures lines"],
-        ...((r.posProcedureLines || []).map((x) => [x.date, x.petName, x.itemName, x.sku, x.quantity, formatPrice(x.lineTotal)])),
-        [],
-        ["Backend summary — POS product lines"],
-        ...((r.posProductLines || []).map((x) => [x.date, x.petName, x.itemName, x.sku, x.quantity, formatPrice(x.lineTotal)])),
-      ];
-      downloadCsv(`Bayport_Reports_${r.from || ""}_${r.to || ""}.csv`, rows);
-      toast("CSV exported.", false);
+      exportFormattedExcel(`Bayport_Reports_${r.from || ""}_${r.to || ""}`, [
+        {
+          title: "Summary",
+          headers: ["Metric", "Value"],
+          rows: [
+            ["Period", r.period || ""],
+            ["From", r.from || ""],
+            ["To", r.to || ""],
+            ["Total POS sales (range)", formatPrice(totalPos)],
+            ["Pending billing (range)", formatPrice(pending)],
+          ],
+        },
+        {
+          title: "Top items",
+          headers: ["Item", "Category", "Qty", "Total"],
+          rows: top.map((x) => [x.name, x.cat, x.qty, formatPrice(x.total)]),
+        },
+        {
+          title: "POS procedure lines",
+          headers: ["Date", "Pet", "Item", "SKU", "Qty", "Line total"],
+          rows: (r.posProcedureLines || []).map((x) => [
+            x.date,
+            x.petName,
+            x.itemName,
+            x.sku,
+            x.quantity,
+            formatPrice(x.lineTotal),
+          ]),
+        },
+        {
+          title: "POS product lines",
+          headers: ["Date", "Pet", "Item", "SKU", "Qty", "Line total"],
+          rows: (r.posProductLines || []).map((x) => [
+            x.date,
+            x.petName,
+            x.itemName,
+            x.sku,
+            x.quantity,
+            formatPrice(x.lineTotal),
+          ]),
+        },
+      ]);
+      toast("Excel file exported.", false);
     };
 
     loadReport();

@@ -54,7 +54,7 @@
                 <label class="text-xs font-medium text-slate-500">Search</label>
                 <input id="searchInp" type="search" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-[var(--soft-teal)]/25 focus:border-[var(--soft-teal)] outline-none" placeholder="Invoice #, pet, owner, description…" />
               </div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1">
+              <div class="grid grid-cols-2 gap-3 flex-1 max-w-md">
                 <div>
                   <label class="text-xs font-medium text-slate-500">From</label>
                   <input id="dateFrom" type="date" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
@@ -62,15 +62,6 @@
                 <div>
                   <label class="text-xs font-medium text-slate-500">To</label>
                   <input id="dateTo" type="date" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label class="text-xs font-medium text-slate-500">Status</label>
-                  <select id="statusSel" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">All status</option>
-                    <option value="PAID">Paid</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="VOIDED">Voided</option>
-                  </select>
                 </div>
               </div>
               <div class="flex gap-2 shrink-0">
@@ -481,12 +472,8 @@
 
     function filteredRows() {
       const q = (document.getElementById("searchInp").value || "").trim().toLowerCase();
-      const s = document.getElementById("statusSel").value;
       return billing.filter((r) => {
         if (!inDateRange(r)) return false;
-        const st = String(r.status || "").toUpperCase();
-        if (s === "VOIDED") return false;
-        if (s && st !== s) return false;
         if (!q) return true;
         const inv = invoiceNo(r).toLowerCase();
         const str = `${inv} ${r.petName || ""} ${r.ownerName || ""} ${r.description || ""}`.toLowerCase();
@@ -826,11 +813,6 @@
     };
 
     document.getElementById("searchInp").addEventListener("input", () => {
-      page = 1;
-      renderKpis();
-      renderTable();
-    });
-    document.getElementById("statusSel").addEventListener("change", () => {
       page = 1;
       renderKpis();
       renderTable();

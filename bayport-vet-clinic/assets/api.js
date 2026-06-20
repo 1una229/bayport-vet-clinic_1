@@ -918,7 +918,8 @@ async function repoSummary(period, from, to) {
 
 async function repoAddProcedure(petId, procedure) {
   ensureApiEnabled();
-  procedure.vet = typeof getUserName === "function" ? getUserName() : procedure.vet;
+  const enteredVet = procedure.vet && String(procedure.vet).trim();
+  procedure.vet = enteredVet || (typeof getUserName === "function" ? getUserName() : procedure.vet);
   await Api.pets.addProcedure(petId, procedure);
 }
 
